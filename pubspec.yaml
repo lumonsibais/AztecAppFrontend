@@ -1,0 +1,23 @@
+name: aztec_app
+description: AztecApp Explorer — sitios mexicas de la CDMX para viajeros independientes.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Única dependencia de red. Deliberado: sin dio, sin retrofit, sin
+  # build_runner. La capa de datos son cuatro archivos que se leen de una
+  # sentada, y no hay un paso de codegen que se pueda quedar desincronizado.
+  http: ^1.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
