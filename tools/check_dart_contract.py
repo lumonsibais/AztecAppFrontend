@@ -48,6 +48,11 @@ MAPA = {
     "UserStats": "UserStats",
     "User": "User",
     "AuthTokens": "Auth",
+    "TourAudio": "TourAudio",
+    "TourStop": "TourStop",
+    "TourStatistics": "TourStatistics",
+    "UserTourProgress": "UserTourProgress",
+    "Tour": "Tour",
 }
 
 # LakeFeature lee de dos sitios a la vez (properties y geometry), así que se
@@ -160,6 +165,24 @@ def main():
                 f"{clase} lee sin admitir null campos que el spec marca "
                 f"nullable: {sorted(arriesgadas)}"
             )
+
+    # TourProgress aplana `lastLocation` en dos campos sueltos, así que lee
+    # claves de dos schemas: el suyo y el de LastLocation.
+    cuerpo = trozos.get("TourProgress")
+    if cuerpo:
+        revisadas += 1
+        campos_tp, nulos_tp = campos_del_schema(spec, "TourProgress")
+        campos_loc, nulos_loc = campos_del_schema(spec, "LastLocation")
+        inventadas = claves_leidas(cuerpo) - (campos_tp | campos_loc)
+        if inventadas:
+            problemas.append(
+                f"TourProgress lee claves que el spec no declara: "
+                f"{sorted(inventadas)}")
+        arriesgadas = ((lecturas_no_nulas(cuerpo) - claves_con_guarda(cuerpo))
+                       & (nulos_tp | nulos_loc))
+        if arriesgadas:
+            problemas.append(
+                f"TourProgress lee sin admitir null: {sorted(arriesgadas)}")
 
     # LakeFeature, que mezcla dos schemas
     cuerpo = trozos.get("LakeFeature")

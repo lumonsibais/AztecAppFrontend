@@ -91,6 +91,8 @@ lib/
   screens/             una pantalla por pestaña, más la ficha de sitio
     auth/              crear cuenta y entrar
     profile/           la cuenta: correo, desbloqueo y salir
+    tours/             el catálogo de tours y la ficha con sus paradas
+    history/           el lector de artículos de la guía histórica
   widgets/             la tarjeta de sitio y el botón de cuenta
   theme.dart           colores y tipografía del diseño
 ```
@@ -115,6 +117,14 @@ python3 tools/check_against_live.py http://localhost:5001  # modelos vs. respues
 python3 tools/sanity_dart.py                               # llaves, imports, interpolaciones
 python3 tools/check_sesion_viva.py http://localhost:5001   # la lógica de sesión vs. el backend
 ```
+
+`check_against_live.py` hace **dos pasadas**: una anónima y otra con una cuenta
+que tiene el contenido desbloqueado, que se crea sola al vuelo. La segunda es la
+que importa y la que faltaba: las paradas de un tour, el audio, el cuerpo de un
+artículo y el `whyVisit` de un sitio **no viajan** si no se ha pagado, así que
+la pasada anónima nunca los veía y daba luz verde sin haber mirado la mitad del
+contrato. Necesita el backend con `PAYMENTS_ALLOW_UNVERIFIED=true`; si no lo
+está, esas sondas se saltan diciéndolo.
 
 La segunda es la que más vale: compara los modelos con lo que el servidor manda
 **ahora mismo**. Caza justo lo que tumba una app Flutter en el móvil —un campo
@@ -167,6 +177,9 @@ falla en el manifest merger y el error no menciona el paquete por ningún lado.
   el overlay llega, que `surfaceType` decide el color y que el conmutador
   1500/2026 funciona de punta a punta—. Al enchufar Google Maps,
   `LakeFeature.rings` va tal cual a `Polygon(points: ...)`.
+- **El audio de los tours.** Las paradas enseñan que hay narración y cuánto
+  dura, pero no suena: reproducirlo necesita otro paquete (`just_audio` o
+  `audioplayers`) y, sobre todo, poder probarlo en un dispositivo.
 - **Entrar con Google y con Apple.** Los dos necesitan configuración en sus
   consolas y un endpoint que el backend todavía no tiene. No se pinta un botón
   que no funciona: por ahora la cuenta es correo y contraseña, que sí funciona de

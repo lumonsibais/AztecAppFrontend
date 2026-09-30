@@ -4,6 +4,7 @@ import '../api/api_client.dart';
 import '../api/models.dart';
 import '../theme.dart';
 import '../widgets/account_button.dart';
+import 'history/article_screen.dart';
 
 /// Pestaña History: la guía histórica, con sus dos vistas del diseño.
 ///
@@ -72,8 +73,11 @@ class _HistoryScreenState extends State<HistoryScreen>
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
                 itemCount: articulos.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (_, i) =>
-                    _TarjetaArticulo(articulo: articulos[i], indice: i),
+                itemBuilder: (_, i) => _TarjetaArticulo(
+                  articulo: articulos[i],
+                  indice: i,
+                  onTap: () => _abrirArticulo(articulos[i].id),
+                ),
               );
             },
           ),
@@ -107,6 +111,19 @@ class _HistoryScreenState extends State<HistoryScreen>
     );
   }
 
+  /// Abre el artículo y, al volver, recarga la cronología.
+  ///
+  /// Se recarga siempre y no solo cuando algo cambió: dentro se puede marcar
+  /// como leído, encadenar varios artículos con "Next" y desbloquear la guía,
+  /// y llevar la cuenta de cuál de esas cosas pasó cuesta más que pedir la
+  /// lista otra vez.
+  Future<void> _abrirArticulo(String id) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ArticleScreen(api: widget.api, articleId: id),
+    ));
+    if (mounted) setState(() => _cronologia = widget.api.cronologia());
+  }
+
   Widget _mensaje(String texto) => Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -118,80 +135,89 @@ class _HistoryScreenState extends State<HistoryScreen>
 }
 
 class _TarjetaArticulo extends StatelessWidget {
-  const _TarjetaArticulo({required this.articulo, required this.indice});
+  const _TarjetaArticulo({
+    required this.articulo,
+    required this.indice,
+    required this.onTap,
+  });
 
   final HistoricalArticle articulo;
   final int indice;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: articulo.isRead == true
-                    ? AztecTheme.coral
-                    : AztecTheme.arena.withOpacity(0.5),
-                shape: BoxShape.circle,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: articulo.isRead == true
+                      ? AztecTheme.coral
+                      : AztecTheme.arena.withOpacity(0.5),
+                  shape: BoxShape.circle,
+                ),
+                child: articulo.isRead == true
+                    ? const Icon(Icons.check, size: 17, color: Colors.white)
+                    : Text('${indice + 1}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 13)),
               ),
-              child: articulo.isRead == true
-                  ? const Icon(Icons.check, size: 17, color: Colors.white)
-                  : Text('${indice + 1}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 13)),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(articulo.title,
-                            style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800,
-                                height: 1.2)),
-                      ),
-                      if (articulo.muestraCandado)
-                        const Padding(
-                          padding: EdgeInsets.only(left: 8, top: 2),
-                          child: Icon(Icons.lock,
-                              size: 15, color: AztecTheme.tintaSuave),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(articulo.title,
+                              style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.2)),
                         ),
+                        if (articulo.muestraCandado)
+                          const Padding(
+                            padding: EdgeInsets.only(left: 8, top: 2),
+                            child: Icon(Icons.lock,
+                                size: 15, color: AztecTheme.tintaSuave),
+                          ),
+                      ],
+                    ),
+                    if (articulo.description != null) ...[
+                      const SizedBox(height: 5),
+                      Text(articulo.description!,
+                          style: AztecTheme.tagline),
                     ],
-                  ),
-                  if (articulo.description != null) ...[
-                    const SizedBox(height: 5),
-                    Text(articulo.description!,
-                        style: AztecTheme.tagline),
+                    const SizedBox(height: 9),
+                    Wrap(spacing: 12, runSpacing: 4, children: [
+                      if (articulo.topic != null)
+                        Text(articulo.topic!,
+                            style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: AztecTheme.coral)),
+                      if (articulo.readingTimeMinutes != null)
+                        Text('${articulo.readingTimeMinutes} min read',
+                            style: const TextStyle(
+                                fontSize: 12.5, color: AztecTheme.tintaSuave)),
+                    ]),
                   ],
-                  const SizedBox(height: 9),
-                  Wrap(spacing: 12, runSpacing: 4, children: [
-                    if (articulo.topic != null)
-                      Text(articulo.topic!,
-                          style: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: AztecTheme.coral)),
-                    if (articulo.readingTimeMinutes != null)
-                      Text('${articulo.readingTimeMinutes} min read',
-                          style: const TextStyle(
-                              fontSize: 12.5, color: AztecTheme.tintaSuave)),
-                  ]),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

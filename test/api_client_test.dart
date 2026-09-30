@@ -234,4 +234,79 @@ void main() {
       expect(e.message, 'This account already has full access');
     }
   });
+
+  // -------------------------------------------------------------------------
+  // tours
+  // -------------------------------------------------------------------------
+
+  test('el teaser de un tour llega sin paradas y eso no es un error', () async {
+    final api = ApiClient(
+      baseUrl: _base,
+      cliente: MockClient((_) async => _ok({
+            'id': 't1',
+            'title': 'Unearth Tenochtitlan',
+            'isFree': false,
+            'isLocked': true,
+            // De pago y NO comprado: el servidor manda la ficha sin `stops`.
+            'unlockedForViewer': false,
+            'hasEntryFees': false,
+            'stopsCount': 3,
+            'includesAudio': true,
+            'statistics': {'views': 10, 'completions': 2},
+          })),
+    );
+
+    final tour = await api.tour('t1');
+
+    expect(tour.stops, isEmpty);
+    // Lo que permite pintar "3 stops" junto al candado: la cuenta viaja aunque
+    // las paradas no. Sin esto el teaser diría "0 stops".
+    expect(tour.stopsCount, 3);
+    expect(tour.bajoCandado, isTrue);
+  });
+
+  test('guardar el avance manda la parada y omite lo que no se le pasó',
+      () async {
+    Map<String, dynamic>? enviado;
+
+    final api = ApiClient(
+      baseUrl: _base,
+      cliente: MockClient((peticion) async {
+        enviado = jsonDecode(peticion.body) as Map<String, dynamic>;
+        return _ok({
+          'id': 'p1',
+          'tourId': 't1',
+          'currentStopIndex': 2,
+          'isCompleted': false,
+          'lastLocation': {'latitude': null, 'longitude': null},
+        });
+      }),
+    );
+
+    final avance = await api.guardarProgreso('t1', paradaActual: 2);
+
+    expect(enviado, {'currentStopIndex': 2});
+    // Sin coordenadas no se manda `lastLocationLat`: mandarlo como null haría
+    // que el servidor guardara una ubicación vacía encima de la que hubiera.
+    expect(enviado!.containsKey('lastLocationLat'), isFalse);
+    // Y se devuelve lo que guardó el SERVIDOR, no lo que se mandó.
+    expect(avance.currentStopIndex, 2);
+    expect(avance.lastLatitude, isNull);
+  });
+
+  test('empezar un tour de pago sin haberlo comprado da 403 legible', () async {
+    final api = ApiClient(
+      baseUrl: _base,
+      cliente: MockClient((_) async =>
+          http.Response(_fallo('This tour requires full access'), 403)),
+    );
+
+    try {
+      await api.empezarTour('t1');
+      fail('tenía que lanzar');
+    } on ApiException catch (e) {
+      expect(e.necesitaDesbloqueo, isTrue);
+      expect(e.message, 'This tour requires full access');
+    }
+  });
 }

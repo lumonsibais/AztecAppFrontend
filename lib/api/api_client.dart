@@ -274,6 +274,69 @@ class ApiClient {
       .toList();
 
   // -------------------------------------------------------------------------
+  // tours autoguiados
+  // -------------------------------------------------------------------------
+
+  /// El catálogo de tours. Sin sesión llegan todos, los de pago como teaser.
+  Future<List<Tour>> listarTours({int page = 1, int limit = 20}) async {
+    final data = await _obj('GET', '/api/tours/',
+        query: {'page': page, 'limit': limit});
+    return _tours(data['tours']);
+  }
+
+  /// Solo los gratuitos. Es lo que la app enseña a quien todavía no ha pagado
+  /// cuando quiere probar antes de comprar.
+  Future<List<Tour>> toursGratis() async {
+    final data = await _obj('GET', '/api/tours/free');
+    return _tours(data['tours']);
+  }
+
+  /// La ficha, con sus paradas. Las paradas solo vienen si el tour está
+  /// desbloqueado para quien mira; si no, `stops` llega vacía y `stopsCount`
+  /// dice cuántas hay.
+  Future<Tour> tour(String id) async =>
+      Tour.fromJson(await _obj('GET', '/api/tours/$id'));
+
+  /// Los tours que esta cuenta ha empezado, cada uno con su `progress`.
+  /// Requiere sesión.
+  Future<List<Tour>> misTours() async {
+    final data = await _obj('GET', '/api/tours/user/tours');
+    return _tours(data['tours']);
+  }
+
+  /// Empieza el tour. 403 si es de pago y la cuenta no lo tiene desbloqueado.
+  Future<TourProgress> empezarTour(String id) async =>
+      TourProgress.fromJson(await _obj('POST', '/api/tours/$id/start'));
+
+  /// Guarda en qué parada va. Devuelve el avance TAL COMO QUEDÓ GUARDADO, que
+  /// es lo que hay que pintar: con la app abierta en dos sitios, fiarse de lo
+  /// que uno acaba de mandar es divergir sin enterarse.
+  Future<TourProgress> guardarProgreso(
+    String id, {
+    required int paradaActual,
+    double? lat,
+    double? lon,
+    String? notas,
+  }) async =>
+      TourProgress.fromJson(await _obj('PUT', '/api/tours/$id/progress', cuerpo: {
+        'currentStopIndex': paradaActual,
+        if (lat != null) 'lastLocationLat': lat,
+        if (lon != null) 'lastLocationLon': lon,
+        if (notas != null) 'notes': notas,
+      }));
+
+  Future<TourProgress> completarTour(String id, {int? valoracion,
+          String? notas}) async =>
+      TourProgress.fromJson(await _obj('POST', '/api/tours/$id/complete', cuerpo: {
+        if (valoracion != null) 'rating': valoracion,
+        if (notas != null) 'notes': notas,
+      }));
+
+  List<Tour> _tours(dynamic lista) => ((lista as List<dynamic>?) ?? const [])
+      .map((t) => Tour.fromJson(t as Map<String, dynamic>))
+      .toList();
+
+  // -------------------------------------------------------------------------
   // guía histórica
   // -------------------------------------------------------------------------
 

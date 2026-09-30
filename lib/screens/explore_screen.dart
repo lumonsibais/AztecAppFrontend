@@ -8,6 +8,7 @@ import '../widgets/account_button.dart';
 import '../widgets/place_card.dart';
 import 'auth/auth_screen.dart' show pedirEntrar;
 import 'place_detail_screen.dart';
+import 'tours/tours_screen.dart';
 
 /// Pestaña Explore: el listado de sitios con los filtros de la barra.
 ///
@@ -122,9 +123,18 @@ class _ExploreScreenState extends State<ExploreScreen> {
             return ListView.separated(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
               physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: sitios.length,
+              // Una fila más que sitios: la primera es la entrada a los tours.
+              itemCount: sitios.length + 1,
               separatorBuilder: (_, __) => const SizedBox(height: 14),
-              itemBuilder: (context, i) {
+              itemBuilder: (context, indice) {
+                if (indice == 0) {
+                  return _EntradaTours(
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => ToursScreen(api: widget.api),
+                    )),
+                  );
+                }
+                final i = indice - 1;
                 final p = sitios[i];
                 return PlaceCard(
                   place: p,
@@ -242,6 +252,65 @@ class _Vacio extends StatelessWidget {
             textAlign: TextAlign.center,
             style: const TextStyle(color: AztecTheme.tintaSuave)),
       ],
+    );
+  }
+}
+
+
+/// La entrada a los tours, arriba del listado de Explore.
+///
+/// DECISIÓN DE DISEÑO, y conviene que se vea: el diseño tiene cuatro pestañas y
+/// los tours no son una de ellas, así que hay que meterlos por algún lado.
+/// Aquí, porque un tour es una forma de recorrer sitios y Explore es donde se
+/// buscan sitios. Si el Figma dice otra cosa, esto es una tarjeta y se mueve de
+/// sitio en dos minutos.
+class _EntradaTours extends StatelessWidget {
+  const _EntradaTours({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AztecTheme.arena.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: const Icon(Icons.route_outlined,
+                    size: 22, color: AztecTheme.tinta),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Self-guided tours',
+                        style: TextStyle(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w800,
+                            height: 1.2)),
+                    SizedBox(height: 3),
+                    Text('Walk a route with the story along the way.',
+                        style: AztecTheme.tagline),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AztecTheme.tintaSuave),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
