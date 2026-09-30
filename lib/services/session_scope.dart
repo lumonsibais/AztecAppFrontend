@@ -22,8 +22,8 @@ class SessionScope extends InheritedNotifier<Session> {
   const SessionScope({
     super.key,
     required Session session,
-    required Widget child,
-  }) : super(notifier: session, child: child);
+    required super.child,
+  }) : super(notifier: session);
 
   static Session of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<SessionScope>();

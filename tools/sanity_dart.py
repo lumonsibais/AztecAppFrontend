@@ -11,6 +11,7 @@ import sys
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 LIB = RAIZ / "lib"
+PRUEBAS = RAIZ / "test"
 
 PAREJAS = {")": "(", "]": "[", "}": "{"}
 ABIERTOS = set(PAREJAS.values())
@@ -133,7 +134,10 @@ def revisar(ruta: pathlib.Path):
 
 
 def main():
-    archivos = sorted(LIB.rglob("*.dart"))
+    # También `test/`: ahí vivía el `widget_test.dart` que generó
+    # `flutter create`, con una clase `MyApp` que esta app nunca tuvo. Llevaba
+    # roto desde el primer día y nadie lo vio, porque nada lo miraba.
+    archivos = sorted(LIB.rglob("*.dart")) + sorted(PRUEBAS.rglob("*.dart"))
     if not archivos:
         print("no encuentro archivos .dart en lib/", file=sys.stderr)
         return 2
