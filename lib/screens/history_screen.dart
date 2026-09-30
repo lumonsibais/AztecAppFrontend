@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../theme.dart';
+import '../widgets/account_button.dart';
 
 /// Pestaña History: la guía histórica, con sus dos vistas del diseño.
 ///
@@ -41,6 +42,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('History'),
+        actions: const [AccountButton()],
         bottom: TabBar(
           controller: _tabs,
           labelColor: AztecTheme.coral,

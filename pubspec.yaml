@@ -13,6 +13,20 @@ dependencies:
   # build_runner. La capa de datos son cuatro archivos que se leen de una
   # sentada, y no hay un paso de codegen que se pueda quedar desincronizado.
   http: ^1.2.2
+  # Keychain en iOS, Keystore en Android. Aquí van los tokens de sesión, y no en
+  # shared_preferences: el token de refresco vive 90 días y con él se piden
+  # tokens de acceso nuevos sin contraseña, así que a efectos prácticos ES la
+  # contraseña. shared_preferences lo dejaría en un fichero en claro dentro del
+  # sandbox de la app, legible con root o jailbreak y en copias de seguridad sin
+  # cifrar.
+  #
+  # Se fija la 9.x y no la 10: la 10 subió el suelo de Android y de AGP, y no
+  # hace falta nada de lo que trae.
+  #
+  # OJO, Android: `encryptedSharedPreferences: true` exige minSdkVersion 23. Si
+  # android/app/build.gradle está por debajo, la compilación falla con un error
+  # de manifest merger que no menciona este paquete por ningún lado.
+  flutter_secure_storage: ^9.2.2
 
 dev_dependencies:
   flutter_test:

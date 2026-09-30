@@ -34,8 +34,17 @@ APIS_NUEVAS = [
 ]
 
 
-def sin_comentarios_ni_cadenas(fuente: str) -> str:
-    """Sustituye cadenas y comentarios por espacios, conservando longitudes."""
+def sin_comentarios_ni_cadenas(fuente: str, cadenas: bool = False) -> str:
+    """Sustituye comentarios —y por defecto cadenas— por espacios.
+
+    Las longitudes se conservan para que los números de línea sigan cuadrando.
+
+    `cadenas=True` deja las cadenas tal cual. Lo usa la regla de interpolación,
+    que necesita mirar DENTRO de las cadenas (ahí es donde va la interpolación)
+    pero no dentro de los comentarios: un `$` en un comentario no interpola
+    nada. Antes esa regla leía el archivo en bruto y cantaba un falso positivo
+    cada vez que un comentario mencionaba un precio en dólares.
+    """
     salida = []
     i, n = 0, len(fuente)
     while i < n:
@@ -62,9 +71,9 @@ def sin_comentarios_ni_cadenas(fuente: str) -> str:
                 if fuente[j:j + len(cierre)] == cierre:
                     j += len(cierre); break
                 j += 1
-            # Se conservan las llaves de interpolación ${...}: son código.
             trozo = fuente[i:j]
-            salida.append(re.sub(r"[^\s{}]", " ", trozo))
+            # Se conservan las llaves de interpolación ${...}: son código.
+            salida.append(trozo if cadenas else re.sub(r"[^\s{}]", " ", trozo))
             i = j; continue
 
         salida.append(c); i += 1
@@ -96,7 +105,11 @@ def revisar(ruta: pathlib.Path):
     # 2. interpolación mal escrita: $ seguido de algo que no es identificador,
     #    { ni otro $. El `\$` escapado —un precio en dólares dentro de una
     #    cadena— es legítimo y no cuenta.
-    for m in re.finditer(r"(?<!\\)\$(?![A-Za-z_{$])", fuente):
+    #
+    #    Se mira el código SIN COMENTARIOS pero CON cadenas: la interpolación
+    #    vive dentro de las cadenas, y un `$` en un comentario no interpola.
+    sin_comentarios = sin_comentarios_ni_cadenas(fuente, cadenas=True)
+    for m in re.finditer(r"(?<!\\)\$(?![A-Za-z_{$])", sin_comentarios):
         linea = fuente[:m.start()].count("\n") + 1
         contexto = fuente[m.start():m.start() + 12].replace("\n", " ")
         problemas.append(

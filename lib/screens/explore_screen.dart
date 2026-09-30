@@ -4,7 +4,9 @@ import '../api/api_client.dart';
 import '../api/models.dart';
 import '../config.dart';
 import '../theme.dart';
+import '../widgets/account_button.dart';
 import '../widgets/place_card.dart';
+import 'auth/auth_screen.dart' show pedirEntrar;
 import 'place_detail_screen.dart';
 
 /// Pestaña Explore: el listado de sitios con los filtros de la barra.
@@ -54,7 +56,23 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   Future<void> _alternarGuardado(Place p) async {
-    if (!widget.api.haySesion) return;
+    // Sin sesión el corazón no se quedaba quieto sin explicar nada: se pide la
+    // cuenta en ese momento, diciendo para qué, y si se consigue entrar se
+    // guarda el sitio que se quería guardar. Obligar a entrar ANTES de poder
+    // tocar el corazón haría que nadie llegara a saber para qué sirve.
+    if (!widget.api.haySesion) {
+      final entro = await pedirEntrar(
+        context,
+        motivo: 'Sign in to save ${p.name} and find it again later.',
+        registro: true,
+      );
+      if (!entro || !mounted) return;
+      // Al entrar, el servidor ya sabe qué tiene guardado esta cuenta: se
+      // recarga la lista para que los corazones reflejen eso y no lo que se
+      // veía como invitado.
+      setState(() => _futuro = _cargar());
+    }
+
     try {
       if (p.isSaved == true) {
         await widget.api.quitarSitio(p.id);
@@ -75,6 +93,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Explore'),
+        actions: const [AccountButton()],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(52),
           child: _BarraDeFiltros(actual: _filtro, onCambio: _cambiarFiltro),
@@ -109,8 +128,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 final p = sitios[i];
                 return PlaceCard(
                   place: p,
-                  onToggleSaved:
-                      widget.api.haySesion ? () => _alternarGuardado(p) : null,
+                  // Siempre activo, con o sin sesión: si no hay, el propio
+                  // callback pide la cuenta.
+                  onToggleSaved: () => _alternarGuardado(p),
                   onTap: () async {
                     await Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) =>

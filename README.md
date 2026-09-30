@@ -80,13 +80,19 @@ docker-compose publica al Mac.
 
 ```
 lib/
-  config.dart        entorno: a qué servidor apunta y en qué idioma
+  config.dart          entorno: a qué servidor apunta y en qué idioma
   api/
-    models.dart      los modelos, escritos a mano contra openapi.json
-    api_client.dart  el cliente: desenvuelve {success, data} una sola vez
-  screens/           una pantalla por pestaña, más la ficha de sitio
-  widgets/           la tarjeta de sitio de Explore
-  theme.dart         colores y tipografía del diseño
+    models.dart        los modelos, escritos a mano contra openapi.json
+    api_client.dart    el cliente: desenvuelve {success, data} una sola vez
+                       y renueva el token cuando el servidor da 401
+  services/
+    session.dart       quién está dentro; tokens en el Keychain/Keystore
+    session_scope.dart reparte la sesión por el árbol de widgets
+  screens/             una pantalla por pestaña, más la ficha de sitio
+    auth/              crear cuenta y entrar
+    profile/           la cuenta: correo, desbloqueo y salir
+  widgets/             la tarjeta de sitio y el botón de cuenta
+  theme.dart           colores y tipografía del diseño
 ```
 
 Una sola dependencia de red: `http`. Sin dio, sin retrofit, sin `build_runner`.
@@ -107,6 +113,7 @@ necesitan Dart instalado**:
 python3 tools/check_dart_contract.py                       # modelos vs. openapi.json
 python3 tools/check_against_live.py http://localhost:5001  # modelos vs. respuestas reales
 python3 tools/sanity_dart.py                               # llaves, imports, interpolaciones
+python3 tools/check_sesion_viva.py http://localhost:5001   # la lógica de sesión vs. el backend
 ```
 
 La segunda es la que más vale: compara los modelos con lo que el servidor manda
@@ -115,8 +122,41 @@ que llega `null` y se lee sin `?`, una clave mal escrita, un tipo que no
 cuadra— y que el compilador de Dart no ve, porque para él `j['claveMalEscrita']`
 es un `null` perfectamente legal.
 
+La cuarta reproduce en Python la lógica de sesión de `api_client.dart` y la corre
+contra el backend: que un 401 renueve el token y repita la petición, que no entre
+en bucle si la renovación también falla, que salir revoque los dos tokens, y que
+un 401 por contraseña incorrecta no se confunda con un token caducado. Son cosas
+del protocolo, no de Dart, y así se rompen aquí en vez de en un dispositivo.
+
 Ninguna sustituye a `flutter analyze`, que comprueba tipos y sintaxis y hay que
 correr en el Mac.
+
+## La sesión
+
+El token de acceso vive 30 días y el de refresco 90. Con el de refresco se piden
+tokens de acceso nuevos **sin contraseña**, así que a efectos prácticos ES la
+contraseña: por eso los dos van a `flutter_secure_storage` —Keychain en iOS,
+Keystore en Android— y no a `shared_preferences`, que los dejaría en un fichero
+en claro dentro del sandbox de la app.
+
+Tres cosas que no se ven leyendo las pantallas:
+
+- **La renovación es automática y de una sola vez.** Al abrir la app salen varias
+  peticiones juntas; si el token ha caducado todas reciben 401 a la vez. El
+  cliente comparte un único `Future` de refresco, así que se pide un token y las
+  demás esperan ese mismo resultado.
+- **Salir revoca los dos tokens.** `/users/logout` revoca el token con el que se
+  le llama, uno por llamada. Llamarlo solo con el de acceso —que era lo que
+  había— dejaba el de refresco vivo 90 días: "cerrar sesión" no cerraba nada.
+- **Se puede recorrer la app entera sin cuenta.** La cuenta se pide en el momento
+  en que hace falta —al tocar un corazón, al abrir Saved, al pulsar desbloquear—
+  y diciendo para qué. Obligar a entrar en el arranque haría que nadie llegara a
+  ver para qué sirve.
+
+**Android:** `minSdkVersion` está fijado a **23** en `android/app/build.gradle`,
+no en `flutter.minSdkVersion` (que es 21). Lo exige
+`flutter_secure_storage` con `encryptedSharedPreferences`. Con 21 la compilación
+falla en el manifest merger y el error no menciona el paquete por ningún lado.
 
 ## Lo que falta, y por qué
 
@@ -127,13 +167,19 @@ correr en el Mac.
   el overlay llega, que `surfaceType` decide el color y que el conmutador
   1500/2026 funciona de punta a punta—. Al enchufar Google Maps,
   `LakeFeature.rings` va tal cual a `Polygon(points: ...)`.
-- **Autenticación de verdad.** Hoy hay un atajo de desarrollo en Saved para
-  poder probar el corazón contra el backend. Falta Google y Apple, y guardar
-  los tokens en `flutter_secure_storage` — un JWT en `SharedPreferences` es
-  texto plano en el disco.
-- **La compra.** El botón de 15 USD está pintado pero no cobra:
-  `providers.verificar()` del backend responde 501 a propósito mientras no haya
-  pasarela.
+- **Entrar con Google y con Apple.** Los dos necesitan configuración en sus
+  consolas y un endpoint que el backend todavía no tiene. No se pinta un botón
+  que no funciona: por ahora la cuenta es correo y contraseña, que sí funciona de
+  punta a punta.
+- **La compra.** El backend ya cobra por las tiendas —verifica recibos de la App
+  Store y de Google Play, tiene `/payments/confirm` y `/payments/restore`— y lo
+  que falta es la parte del cliente con `in_app_purchase`. No se puede escribir
+  entera sin que existan los productos dados de alta en App Store Connect y en
+  Play Console, porque no habría contra qué probarla. El botón de desbloquear ya
+  hace la mitad que sí depende de nosotros: pedir la cuenta, que es a quien se le
+  concede el acceso.
+- **Restore Purchases.** Apple lo exige en revisión para productos no
+  consumibles. El endpoint está; el botón va con la compra.
 
 ## La línea del paywall
 

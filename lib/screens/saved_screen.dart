@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/models.dart';
+import '../services/session_scope.dart';
 import '../theme.dart';
+import '../widgets/account_button.dart';
 import '../widgets/place_card.dart';
 import 'place_detail_screen.dart';
 
@@ -20,25 +22,31 @@ class SavedScreen extends StatefulWidget {
 class _SavedScreenState extends State<SavedScreen> {
   Future<List<Place>>? _futuro;
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.api.haySesion) _futuro = widget.api.sitiosGuardados();
-  }
-
-  @override
-  void didUpdateWidget(SavedScreen old) {
-    super.didUpdateWidget(old);
-    if (widget.api.haySesion && _futuro == null) {
-      setState(() => _futuro = widget.api.sitiosGuardados());
-    }
-  }
+  /// La sesión de la última construcción. Sirve para detectar el cambio de
+  /// invitado a dentro —y de dentro a fuera— y reaccionar una sola vez.
+  bool _habiaSesion = false;
 
   @override
   Widget build(BuildContext context) {
+    // Escuchar la sesión en vez de comprobarla en `didUpdateWidget`: antes, la
+    // lista solo se cargaba si la pestaña se reconstruía por otro motivo, así
+    // que después de entrar desde otra pantalla Saved seguía enseñando el
+    // "necesitas una cuenta" hasta que algo la tocaba.
+    final sesion = SessionScope.of(context);
+
+    if (sesion.haySesion != _habiaSesion) {
+      _habiaSesion = sesion.haySesion;
+      // Al salir se tira la lista: dejarla pintada enseñaría los sitios de
+      // quien acaba de cerrar sesión.
+      _futuro = sesion.haySesion ? widget.api.sitiosGuardados() : null;
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Saved')),
-      body: !widget.api.haySesion
+      appBar: AppBar(
+        title: const Text('Saved'),
+        actions: const [AccountButton()],
+      ),
+      body: !sesion.haySesion
           ? _SinSesion(onEntrar: widget.onPedirEntrar)
           : RefreshIndicator(
               onRefresh: () async =>

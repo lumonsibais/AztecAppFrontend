@@ -45,7 +45,15 @@ android {
         applicationId "com.example.aztec_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
-        minSdkVersion flutter.minSdkVersion
+        // 23 a mano, y no flutter.minSdkVersion (que es 21).
+        //
+        // Lo exige flutter_secure_storage con `encryptedSharedPreferences`, que
+        // es lo que guarda los tokens de sesión en el Keystore. Con 21 la
+        // compilación falla en el manifest merger, y el error NO menciona el
+        // paquete: solo dice que una librería pide 23 y la app declara 21.
+        //
+        // API 23 es Android 6.0, de 2015. No se pierde nada real.
+        minSdkVersion 23
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName

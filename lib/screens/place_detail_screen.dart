@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/models.dart';
+import '../services/session_scope.dart';
 import '../theme.dart';
+import 'auth/auth_screen.dart' show pedirEntrar;
 
 /// Ficha de un sitio.
 ///
@@ -27,6 +29,14 @@ class PlaceDetailScreen extends StatefulWidget {
 class _PlaceDetailScreenState extends State<PlaceDetailScreen> {
   late Future<Place> _futuro;
 
+  /// Lo que se sabía del acceso la última vez que se construyó.
+  ///
+  /// Qué se pinta en esta pantalla lo decide el SERVIDOR: el contenido de pago
+  /// no viaja en la respuesta si la cuenta no lo tiene. Por eso, cuando el
+  /// acceso cambia, no basta con repintar: hay que volver a pedir la ficha, o el
+  /// candado desaparecería y debajo no habría nada.
+  bool? _accesoAnterior;
+
   @override
   void initState() {
     super.initState();
@@ -35,6 +45,14 @@ class _PlaceDetailScreenState extends State<PlaceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final sesion = SessionScope.of(context);
+
+    if (_accesoAnterior != null &&
+        _accesoAnterior != sesion.tieneAccesoCompleto) {
+      _futuro = widget.api.sitio(widget.placeId);
+    }
+    _accesoAnterior = sesion.tieneAccesoCompleto;
+
     return Scaffold(
       body: FutureBuilder<Place>(
         future: _futuro,
@@ -243,6 +261,41 @@ class _Bloque extends StatelessWidget {
 class _Candado extends StatelessWidget {
   const _Candado();
 
+  /// La mitad de este botón ya funciona y la otra todavía no, y la diferencia
+  /// importa: sin sesión no hay a quién concederle el desbloqueo, así que ese
+  /// paso —pedir la cuenta— se hace aquí y ahora. La compra en sí espera a que
+  /// los productos estén dados de alta en App Store Connect y en Play Console;
+  /// el backend ya tiene los endpoints (`/payments/confirm`, `/payments/restore`)
+  /// y lo que falta es la parte del cliente con `in_app_purchase`.
+  Future<void> _pulsarDesbloquear(BuildContext context) async {
+    final sesion = SessionScope.sin(context);
+
+    if (!sesion.haySesion) {
+      final entro = await pedirEntrar(
+        context,
+        motivo: 'The unlock is tied to your account, so it follows you to any '
+            'device. Create one to continue.',
+        registro: true,
+      );
+      if (!entro) return;
+      // Con sesión nueva puede que la cuenta YA tuviera el desbloqueo comprado
+      // en otro dispositivo. `refrescarUsuario` lo trae y la ficha se repinta
+      // sin candado.
+      await sesion.refrescarUsuario();
+      return;
+    }
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'In-app purchase is not wired up yet — the store products still need '
+          'to be created.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -280,15 +333,14 @@ class _Candado extends StatelessWidget {
                 backgroundColor: AztecTheme.coral,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              // La pasarela todavía no existe: providers.verificar() responde
-              // 501 a propósito. Enchufar esto es el siguiente sprint.
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Payments are not wired up yet.'),
-                ),
+              onPressed: () => _pulsarDesbloquear(context),
+              child: Text(
+                SessionScope.of(context).haySesion
+                    ? 'Unlock for \$15'
+                    : 'Sign in to unlock',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, fontSize: 15),
               ),
-              child: const Text('Unlock for \$15',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
             ),
           ),
         ],

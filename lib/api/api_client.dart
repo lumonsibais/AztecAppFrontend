@@ -41,6 +41,15 @@ class ApiClient {
   String? _accessToken;
   String? _refreshToken;
 
+  /// Se llama cuando el token de acceso se renueva, para que la sesión lo
+  /// guarde. Lo enchufa `Session`; sin ello el token nuevo viviría solo en
+  /// memoria y al reabrir la app se volvería a usar el viejo.
+  Future<void> Function(String accessToken)? alRenovar;
+
+  /// Se llama cuando el refresco falla y la sesión ya no vale. Lo enchufa
+  /// `Session` para limpiar el almacén y mandar a la pantalla de entrada.
+  Future<void> Function()? alExpirar;
+
   bool get haySesion => _accessToken != null;
 
   void usarTokens(AuthTokens tokens) {
@@ -53,14 +62,17 @@ class ApiClient {
     _refreshToken = null;
   }
 
-  Map<String, String> _cabeceras({bool conCuerpo = false}) {
+  /// `token` fuerza cuál se manda. Solo lo usa el refresco, que tiene que
+  /// firmar con el token de refresco en lugar del de acceso.
+  Map<String, String> _cabeceras({bool conCuerpo = false, String? token}) {
     final h = <String, String>{
       'Accept': 'application/json',
       // El backend compara por prefijo de dos letras: es-MX resuelve a es.
       'Accept-Language': Config.locale,
     };
     if (conCuerpo) h['Content-Type'] = 'application/json';
-    if (_accessToken != null) h['Authorization'] = 'Bearer $_accessToken';
+    final bearer = token ?? _accessToken;
+    if (bearer != null) h['Authorization'] = 'Bearer $bearer';
     return h;
   }
 
@@ -75,30 +87,59 @@ class ApiClient {
   }
 
   /// Ejecuta y devuelve el contenido de `data` ya desenvuelto.
+  ///
+  /// Si el servidor contesta 401 y hay token de refresco, lo canjea por un
+  /// token de acceso nuevo y repite la petición UNA vez. `reintentando` es lo
+  /// que evita que un 401 del propio refresco entre en bucle.
   Future<dynamic> _enviar(
     String metodo,
     String ruta, {
     Map<String, dynamic>? query,
     Map<String, dynamic>? cuerpo,
+    bool reintentando = false,
+  }) async {
+    final r = await _crudo(metodo, ruta, query: query, cuerpo: cuerpo);
+
+    if (r.statusCode == 401 &&
+        !reintentando &&
+        _refreshToken != null &&
+        !_sinRenovar(ruta)) {
+      if (await _refrescar()) {
+        return _enviar(metodo, ruta,
+            query: query, cuerpo: cuerpo, reintentando: true);
+      }
+      await alExpirar?.call();
+    }
+
+    return _desenvolver(r);
+  }
+
+  Future<http.Response> _crudo(
+    String metodo,
+    String ruta, {
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? cuerpo,
+    String? token,
   }) async {
     final uri = _uri(ruta, query);
-    final cabeceras = _cabeceras(conCuerpo: cuerpo != null);
+    final cabeceras = _cabeceras(conCuerpo: cuerpo != null, token: token);
     final payload = cuerpo == null ? null : jsonEncode(cuerpo);
 
-    late http.Response r;
     switch (metodo) {
       case 'GET':
-        r = await _http.get(uri, headers: cabeceras);
+        return _http.get(uri, headers: cabeceras);
       case 'POST':
-        r = await _http.post(uri, headers: cabeceras, body: payload);
+        return _http.post(uri, headers: cabeceras, body: payload);
       case 'PUT':
-        r = await _http.put(uri, headers: cabeceras, body: payload);
+        return _http.put(uri, headers: cabeceras, body: payload);
       case 'DELETE':
-        r = await _http.delete(uri, headers: cabeceras, body: payload);
+        return _http.delete(uri, headers: cabeceras, body: payload);
       default:
         throw ArgumentError('Unsupported HTTP method: $metodo');
     }
+  }
 
+  dynamic _desenvolver(http.Response r) {
     Map<String, dynamic> json;
     try {
       json = jsonDecode(r.body) as Map<String, dynamic>;
@@ -115,6 +156,68 @@ class ApiClient {
     }
 
     return json['data'];
+  }
+
+  // -------------------------------------------------------------------------
+  // Renovación del token
+  // -------------------------------------------------------------------------
+
+  /// Un solo refresco en vuelo a la vez.
+  ///
+  /// Al abrir la app se disparan varias peticiones juntas —Explore, el estado de
+  /// acceso, el perfil— y si el token ha caducado, TODAS reciben 401 a la vez.
+  /// Sin esto, cada una pediría su propio token: el servidor emitiría varios y
+  /// el último en llegar sobrescribiría a los demás, dejando peticiones en vuelo
+  /// firmadas con un token que ya nadie tiene guardado. Con el Future compartido
+  /// se refresca una vez y las demás esperan ese mismo resultado.
+  /// Rutas cuyo 401 NO significa "el token caducó".
+  ///
+  ///   /users/login y /users/register  no llevan token: su 401 es "contraseña
+  ///       incorrecta". Renovar y repetir sería gastar un refresco para volver a
+  ///       recibir el mismo 401, y peor: si el refresco fallara, un intento de
+  ///       entrar con la contraseña mal borraría la sesión que ya había.
+  ///
+  ///   /users/refresh  es el propio refresco. Sin esta salida, su 401 llamaría
+  ///       al refresco otra vez.
+  static const _rutasSinRenovar = [
+    '/api/users/login',
+    '/api/users/register',
+    '/api/users/refresh',
+  ];
+
+  bool _sinRenovar(String ruta) =>
+      _rutasSinRenovar.any((r) => ruta.startsWith(r));
+
+  Future<bool>? _refrescoEnVuelo;
+
+  Future<bool> _refrescar() {
+    return _refrescoEnVuelo ??= _hacerRefresco().whenComplete(() {
+      _refrescoEnVuelo = null;
+    });
+  }
+
+  Future<bool> _hacerRefresco() async {
+    final refresh = _refreshToken;
+    if (refresh == null) return false;
+
+    try {
+      // OJO: este endpoint se autentica con el token de REFRESCO, no con el de
+      // acceso. Mandar el de acceso da 401 aunque sea válido.
+      final r = await _crudo('POST', '/api/users/refresh', token: refresh);
+      if (r.statusCode != 200) return false;
+
+      final data = (jsonDecode(r.body) as Map<String, dynamic>)['data'];
+      final nuevo = (data as Map<String, dynamic>?)?['accessToken'] as String?;
+      if (nuevo == null) return false;
+
+      // El servidor devuelve SOLO un access token nuevo: el de refresco sigue
+      // siendo el mismo y no hay que tocarlo.
+      _accessToken = nuevo;
+      await alRenovar?.call(nuevo);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<Map<String, dynamic>> _obj(String metodo, String ruta,
@@ -223,12 +326,30 @@ class ApiClient {
     return tokens;
   }
 
+  /// Cierra la sesión revocando LOS DOS tokens.
+  ///
+  /// `/users/logout` revoca el token con el que se le llama, uno por llamada.
+  /// Llamarlo solo con el de acceso dejaba el de refresco vivo 90 días, y con él
+  /// se piden tokens de acceso nuevos sin contraseña: el "cerrar sesión" no
+  /// cerraba nada, solo lo escondía de esta app.
+  ///
+  /// Las dos revocaciones van por separado y ninguna puede impedir la otra: si
+  /// la primera falla, la segunda tiene que intentarse igual.
   Future<void> salir() async {
-    try {
-      await _enviar('POST', '/api/users/logout');
-    } finally {
-      olvidarSesion();
+    final access = _accessToken;
+    final refresh = _refreshToken;
+
+    for (final token in [access, refresh]) {
+      if (token == null) continue;
+      try {
+        await _crudo('POST', '/api/users/logout', token: token);
+      } catch (_) {
+        // Sin red no hay revocación posible. La sesión local se borra de todas
+        // formas: quien pulsa "salir" se queda fuera.
+      }
     }
+
+    olvidarSesion();
   }
 
   Future<User> perfil() async =>
