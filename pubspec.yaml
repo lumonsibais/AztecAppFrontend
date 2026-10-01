@@ -35,3 +35,30 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Las dos tipografías del diseño: Playfair Display para los títulos, Inter
+  # para todo lo demás.
+  #
+  # Empaquetadas y no por el paquete `google_fonts`, a propósito: esta app se
+  # usa caminando por el Centro con mala señal, y `google_fonts` las descarga en
+  # el primer arranque. Hasta que terminara, la app enseñaría la tipografía del
+  # sistema; sin datos, nunca.
+  #
+  # Los .ttf NO están en git —son binarios que no cambian nunca— y se traen con:
+  #
+  #     bash tools/traer-fuentes.sh
+  #
+  # SIN ESE PASO `flutter run` NO COMPILA: falla con "unable to locate asset
+  # entry", que no dice qué archivo falta.
+  #
+  # Son fuentes variables: un archivo cubre todos los pesos, y Flutter elige el
+  # eje a partir de `fontWeight`.
+  fonts:
+    - family: PlayfairDisplay
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay.ttf
+        - asset: assets/fonts/PlayfairDisplay-Italic.ttf
+          style: italic
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf

@@ -76,6 +76,35 @@ docker-compose publica al Mac.
 `--dart-define=API_BASE=http://10.0.2.2:5001`. En el simulador de iOS
 `localhost` funciona tal cual.
 
+## Antes de compilar: las tipografías
+
+```bash
+bash tools/traer-fuentes.sh
+```
+
+Una vez por copia del repo. **Sin esto `flutter run` no compila**: falla con
+*unable to locate asset entry*, que no dice qué archivo falta.
+
+El diseño usa **Playfair Display** para los títulos e **Inter** para todo lo
+demás, y van empaquetadas, no por el paquete `google_fonts`. La razón es el
+producto: esta app se usa caminando por el Centro con mala señal, y
+`google_fonts` las descarga en el primer arranque — hasta que terminara, la app
+enseñaría la tipografía del sistema, y sin datos nunca. Los `.ttf` no se
+versionan porque son binarios que no cambian.
+
+## El sistema de diseño
+
+`lib/theme.dart` sale del archivo de Figma, no de aproximaciones. Los estilos de
+texto llevan **los nombres del archivo** —`h1`, `h2`, `h3`, `cita`,
+`tituloSitio`, `capsula`— para que al mirar el diseño y el código se hable del
+mismo estilo.
+
+`tools/check_tokens.py` compara los dos. Existe porque el tema venía con una
+paleta *parecida* y ningún color exacto: el coral estaba a dos puntos, el gris
+de texto a bastantes más. A ojo cuadraba, así que nadie lo notó. Cuando se lea
+otra pantalla del diseño y aparezca un color nuevo, se añade a la tabla de ese
+archivo y deja de poder cambiar sin que nadie se entere.
+
 ## Cómo está montado
 
 ```
@@ -116,6 +145,7 @@ python3 tools/check_dart_contract.py                       # modelos vs. openapi
 python3 tools/check_against_live.py http://localhost:5001  # modelos vs. respuestas reales
 python3 tools/sanity_dart.py                               # llaves, imports, interpolaciones
 python3 tools/check_sesion_viva.py http://localhost:5001   # la lógica de sesión vs. el backend
+python3 tools/check_tokens.py                              # el tema vs. el diseño de Figma
 ```
 
 `check_against_live.py` hace **dos pasadas**: una anónima y otra con una cuenta
