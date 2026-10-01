@@ -68,11 +68,23 @@ class _SavedScreenState extends State<SavedScreen> {
                         'Tap the heart on any place in Explore.');
                   }
 
-                  return ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+                  // Cuadrícula y no lista, igual que Explore. Además de
+                  // ser lo coherente, `PlaceCard` necesita una altura acotada:
+                  // su descripción va en un `Expanded`, y un `Expanded` dentro
+                  // de una lista —donde la altura es libre— revienta en
+                  // ejecución con "incoming height constraints are unbounded".
+                  // Eso no lo ve `flutter analyze`: aparece al abrir Saved.
+                  return GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(17, 16, 17, 28),
                     physics: const AlwaysScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 14,
+                      mainAxisSpacing: 10,
+                      childAspectRatio: 170 / 274,
+                    ),
                     itemCount: sitios.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 14),
                     itemBuilder: (context, i) => PlaceCard(
                       place: sitios[i],
                       onToggleSaved: () async {

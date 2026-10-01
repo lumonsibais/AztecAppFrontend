@@ -91,50 +91,89 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Sin AppBar: el diseño pone un encabezado dentro del contenido —"Start
+    // exploring" en Playfair sobre la ciudad— y el acceso a la cuenta como un
+    // círculo coral a su derecha. Una AppBar de Material no da esa forma.
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Explore'),
-        actions: const [AccountButton()],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
-          child: _BarraDeFiltros(actual: _filtro, onCambio: _cambiarFiltro),
-        ),
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async => setState(() => _futuro = _cargar()),
-        child: FutureBuilder<List<Place>>(
-          future: _futuro,
-          builder: (context, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snap.hasError) {
-              return _Error(
-                error: snap.error!,
-                onReintentar: () => setState(() => _futuro = _cargar()),
-              );
-            }
-
-            final sitios = snap.data ?? const <Place>[];
-            if (sitios.isEmpty) {
-              return const _Vacio(mensaje: 'No places match this filter.');
-            }
-
-            return ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-              physics: const AlwaysScrollableScrollPhysics(),
-              // Una fila más que sitios: la primera es la entrada a los tours.
-              itemCount: sitios.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(height: 14),
-              itemBuilder: (context, indice) {
-                if (indice == 0) {
-                  return _EntradaTours(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: () async => setState(() => _futuro = _cargar()),
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              const SliverToBoxAdapter(child: _Encabezado()),
+              SliverToBoxAdapter(
+                child: _BarraDeFiltros(
+                    actual: _filtro, onCambio: _cambiarFiltro),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+                  child: Text('Aztec Sites in Mexico City',
+                      style: AztecTheme.h2),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(17, 0, 17, 14),
+                  child: _EntradaTours(
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => ToursScreen(api: widget.api),
                     )),
-                  );
-                }
-                final i = indice - 1;
+                  ),
+                ),
+              ),
+              _cuadricula(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _cuadricula() {
+    return FutureBuilder<List<Place>>(
+      future: _futuro,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.only(top: 80),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+        if (snap.hasError) {
+          return SliverToBoxAdapter(
+            child: _Error(
+              error: snap.error!,
+              onReintentar: () => setState(() => _futuro = _cargar()),
+            ),
+          );
+        }
+
+        final sitios = snap.data ?? const <Place>[];
+        if (sitios.isEmpty) {
+          return const SliverToBoxAdapter(
+            child: _Vacio(mensaje: 'No places match this filter.'),
+          );
+        }
+
+        // Dos columnas, como el diseño. `childAspectRatio` sale de las medidas
+        // del archivo: tarjetas de 170×274.
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(17, 0, 17, 28),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 14,
+              mainAxisSpacing: 10,
+              childAspectRatio: 170 / 274,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, i) {
                 final p = sitios[i];
                 return PlaceCard(
                   place: p,
@@ -150,9 +189,40 @@ class _ExploreScreenState extends State<ExploreScreen> {
                   },
                 );
               },
-            );
-          },
-        ),
+              childCount: sitios.length,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// "Start exploring" y la ciudad, con el acceso a la cuenta a la derecha.
+class _Encabezado extends StatelessWidget {
+  const _Encabezado();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 16, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Start exploring', style: AztecTheme.h1),
+                SizedBox(height: 2),
+                // La ciudad es fija a propósito: el producto es la CDMX. El día
+                // que haya otra, sale de la ubicación.
+                Text('📍 Mexico City, MX', style: AztecTheme.descripcion),
+              ],
+            ),
+          ),
+          const AccountButton(),
+        ],
       ),
     );
   }
@@ -173,25 +243,44 @@ class _BarraDeFiltros extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Píldoras de 44 de alto, no `ChoiceChip`: el chip de Material trae su
+    // propia forma, su propio relleno y su propia animación de selección, y
+    // ninguna de las tres es la del diseño.
     return SizedBox(
-      height: 52,
+      height: 60,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
         children: _etiquetas.entries.map((e) {
           final activo = e.key == actual;
           return Padding(
-            padding: const EdgeInsets.only(right: 8, bottom: 10),
-            child: ChoiceChip(
-              label: Text(e.value),
-              selected: activo,
-              onSelected: (_) => onCambio(e.key),
-              showCheckmark: false,
-              selectedColor: AztecTheme.coral,
-              labelStyle: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: activo ? Colors.white : AztecTheme.tinta,
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => onCambio(e.key),
+              child: Container(
+                height: 44,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 13),
+                decoration: BoxDecoration(
+                  color: activo ? AztecTheme.coral : Colors.white,
+                  borderRadius:
+                      BorderRadius.circular(AztecTheme.radioPildora),
+                  border: Border.all(
+                      color: activo ? AztecTheme.coral : AztecTheme.linea),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(activo ? 0.17 : 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  e.value,
+                  style: AztecTheme.textoBoton.copyWith(
+                    color: activo ? Colors.white : AztecTheme.tinta,
+                  ),
+                ),
               ),
             ),
           );

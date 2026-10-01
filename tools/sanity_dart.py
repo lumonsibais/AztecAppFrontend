@@ -109,8 +109,11 @@ def revisar(ruta: pathlib.Path):
     #
     #    Se mira el código SIN COMENTARIOS pero CON cadenas: la interpolación
     #    vive dentro de las cadenas, y un `$` en un comentario no interpola.
+    #    Y `.$1` NO es interpolación: son los campos posicionales de un record
+    #    de Dart 3 (`pestanas[i].$1`). Por eso se excluye el `$` precedido de
+    #    punto; dentro de una cadena eso es rarísimo y fuera es código normal.
     sin_comentarios = sin_comentarios_ni_cadenas(fuente, cadenas=True)
-    for m in re.finditer(r"(?<!\\)\$(?![A-Za-z_{$])", sin_comentarios):
+    for m in re.finditer(r"(?<!\\)(?<!\.)\$(?![A-Za-z_{$])", sin_comentarios):
         linea = fuente[:m.start()].count("\n") + 1
         contexto = fuente[m.start():m.start() + 12].replace("\n", " ")
         problemas.append(
