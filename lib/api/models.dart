@@ -141,6 +141,21 @@ class HistoricalContext {
       );
 }
 
+class PlaceImage {
+  final String url;
+
+  /// Pie de foto. Opcional: la mayoría no lo necesita, y obligar a escribir uno
+  /// acaba produciendo pies que repiten el nombre del sitio.
+  final String? caption;
+
+  const PlaceImage({required this.url, this.caption});
+
+  factory PlaceImage.fromJson(Map<String, dynamic> j) => PlaceImage(
+        url: j['url'] as String,
+        caption: _asString(j['caption']),
+      );
+}
+
 class Place {
   final String id;
   final String name;
@@ -161,7 +176,14 @@ class Place {
   final String? historicalSignificance;
   final int? estimatedVisitDuration;
   final String? visitDurationText;
+  /// La PORTADA. Se conserva por compatibilidad; para pintar, usa `images`.
   final String? imageUrl;
+
+  /// La galería del carrusel, en orden. Cuando el sitio solo tiene portada,
+  /// trae esa sola, así que **nunca llega vacía habiendo foto**: no hace falta
+  /// mirar `imageUrl` por separado.
+  final List<PlaceImage> images;
+
   final Badges badges;
   final ContentAccess access;
   final NearbyServices services;
@@ -195,6 +217,7 @@ class Place {
     this.estimatedVisitDuration,
     this.visitDurationText,
     this.imageUrl,
+    this.images = const [],
     this.isSaved,
     this.openingHours,
     this.howToGetThere,
@@ -217,6 +240,9 @@ class Place {
         estimatedVisitDuration: _asInt(j['estimatedVisitDuration']),
         visitDurationText: _asString(j['visitDurationText']),
         imageUrl: _asString(j['imageUrl']),
+        images: ((j['images'] as List<dynamic>?) ?? const [])
+            .map((i) => PlaceImage.fromJson(i as Map<String, dynamic>))
+            .toList(),
         badges: Badges.fromJson(j['badges'] as Map<String, dynamic>),
         access: ContentAccess.fromJson(j['contentAccess'] as Map<String, dynamic>),
         services: NearbyServices.fromJson(
@@ -508,6 +534,12 @@ class TourStop {
   /// bloqueado: es guion nuestro y va detrás del candado.
   final String? transitionText;
 
+  /// Minutos andando HASTA LA PARADA SIGUIENTE. La última lo trae null.
+  ///
+  /// Viaja también con el tour bloqueado: es logística, como la taquilla de un
+  /// museo. Lo que se paga es el guion y el audio.
+  final int? walkMinutesToNext;
+
   final TourAudio audio;
 
   /// El sitio completo. El backend lo manda embebido para que la app no tenga
@@ -520,6 +552,7 @@ class TourStop {
     required this.placeId,
     required this.audio,
     this.transitionText,
+    this.walkMinutesToNext,
     this.place,
   });
 
@@ -528,6 +561,7 @@ class TourStop {
         position: (j['position'] as num).toInt(),
         placeId: j['placeId'] as String,
         transitionText: _asString(j['transitionText']),
+        walkMinutesToNext: _asInt(j['walkMinutesToNext']),
         audio: TourAudio.fromJson(j['audio'] as Map<String, dynamic>),
         place: j['place'] == null
             ? null
@@ -646,6 +680,10 @@ class Tour {
   final int? estimatedDuration;
   final String? durationText;
   final String? difficultyLevel;
+
+  /// La zona por la que transcurre: "Centro Histórico".
+  final String? neighborhood;
+
   final String? imageUrl;
   final double? totalDistance;
   final bool hasEntryFees;
@@ -687,6 +725,7 @@ class Tour {
     this.estimatedDuration,
     this.durationText,
     this.difficultyLevel,
+    this.neighborhood,
     this.imageUrl,
     this.totalDistance,
     this.rating,
@@ -707,6 +746,7 @@ class Tour {
         estimatedDuration: _asInt(j['estimatedDuration']),
         durationText: _asString(j['durationText']),
         difficultyLevel: _asString(j['difficultyLevel']),
+        neighborhood: _asString(j['neighborhood']),
         imageUrl: _asString(j['imageUrl']),
         totalDistance: _asDouble(j['totalDistance']),
         hasEntryFees: _asBool(j['hasEntryFees']),

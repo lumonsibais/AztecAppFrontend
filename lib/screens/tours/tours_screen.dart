@@ -205,6 +205,10 @@ class _TarjetaTour extends StatelessWidget {
               ],
               const SizedBox(height: 12),
               Wrap(spacing: 14, runSpacing: 6, children: [
+                if (tour.neighborhood != null)
+                  _Dato(
+                      icono: Icons.location_on_outlined,
+                      texto: tour.neighborhood!),
                 if (tour.durationText != null)
                   _Dato(icono: Icons.schedule, texto: tour.durationText!),
                 _Dato(

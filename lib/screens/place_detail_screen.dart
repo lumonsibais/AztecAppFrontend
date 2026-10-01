@@ -175,28 +175,42 @@ class _PlaceDetailScreenState extends State<PlaceDetailScreen> {
   }
 }
 
-/// La foto, con los dos botones encima.
+/// El carrusel de fotos, con los dos botones encima.
 ///
-/// En el diseño este bloque es un **carrusel**: lleva tres puntos de paso
-/// debajo. No se puede hacer todavía porque el contrato da **una sola**
-/// `imageUrl` por sitio; una galería es campo nuevo en el backend. Hasta
-/// entonces, una imagen y sin puntos: unos puntos que no llevan a ninguna parte
-/// son peor que no tenerlos.
-class _Hero extends StatelessWidget {
+/// Los puntos de paso solo salen cuando hay MÁS DE UNA foto: un punto solo no
+/// informa de nada y sugiere que hay algo más que deslizar.
+class _Hero extends StatefulWidget {
   const _Hero({required this.place, required this.onToggleSaved});
 
   final Place place;
   final VoidCallback onToggleSaved;
 
   @override
+  State<_Hero> createState() => _HeroState();
+}
+
+class _HeroState extends State<_Hero> {
+  final _paginas = PageController();
+  int _actual = 0;
+
+  @override
+  void dispose() {
+    _paginas.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final place = widget.place;
+    final fotos = place.images;
+
     return SizedBox(
       height: 280,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (place.imageUrl == null)
+          if (fotos.isEmpty)
             Container(
               color: AztecTheme.arena.withOpacity(0.5),
               alignment: Alignment.center,
@@ -204,11 +218,16 @@ class _Hero extends StatelessWidget {
                   size: 54, color: Colors.white.withOpacity(0.7)),
             )
           else
-            Image.network(
-              place.imageUrl!,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) =>
-                  Container(color: AztecTheme.arena.withOpacity(0.5)),
+            PageView.builder(
+              controller: _paginas,
+              itemCount: fotos.length,
+              onPageChanged: (i) => setState(() => _actual = i),
+              itemBuilder: (_, i) => Image.network(
+                fotos[i].url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    Container(color: AztecTheme.arena.withOpacity(0.5)),
+              ),
             ),
 
           // Degradado de arriba: sin él, los botones blancos desaparecen sobre
@@ -240,14 +259,68 @@ class _Hero extends StatelessWidget {
                         ? Icons.favorite
                         : Icons.favorite_border,
                     color: place.isSaved == true ? AztecTheme.coral : null,
-                    onPulsar: onToggleSaved,
+                    onPulsar: widget.onToggleSaved,
                   ),
                 ],
               ),
             ),
           ),
+
+          if (fotos.length > 1)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 12,
+              child: _Puntos(total: fotos.length, actual: _actual),
+            ),
+
+          // El pie de la foto actual, si lo tiene.
+          if (fotos.isNotEmpty && fotos[_actual].caption != null)
+            Positioned(
+              left: 20,
+              right: 20,
+              bottom: fotos.length > 1 ? 30 : 14,
+              child: Text(
+                fotos[_actual].caption!,
+                style: const TextStyle(
+                  fontFamily: AztecTheme.grotesca,
+                  fontSize: 12,
+                  color: Colors.white,
+                  shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
+                ),
+              ),
+            ),
         ],
       ),
+    );
+  }
+}
+
+/// Los puntos de paso del carrusel. El activo es una barrita alargada, como en
+/// el diseño, no un círculo más grande.
+class _Puntos extends StatelessWidget {
+  const _Puntos({required this.total, required this.actual});
+
+  final int total;
+  final int actual;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < total; i++)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            height: 8,
+            width: i == actual ? 22 : 8,
+            decoration: BoxDecoration(
+              color: i == actual ? AztecTheme.coral : AztecTheme.linea,
+              borderRadius: BorderRadius.circular(50),
+            ),
+          ),
+      ],
     );
   }
 }

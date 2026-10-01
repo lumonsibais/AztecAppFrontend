@@ -128,6 +128,84 @@ def scrollable_dentro_de_sliver(fuente: str):
     return problemas
 
 
+def cuerpos_de_clase(fuente: str):
+    """{NombreClase: (cuerpo, posición)} troceando por declaraciones de clase."""
+    marcas = [(m.group(1), m.start())
+              for m in re.finditer(r"^class (\w+)", fuente, re.M)]
+    salida = {}
+    for i, (nombre, inicio) in enumerate(marcas):
+        fin = marcas[i + 1][1] if i + 1 < len(marcas) else len(fuente)
+        salida[nombre] = (fuente[inicio:fin], inicio)
+    return salida
+
+
+def _nombres_declarados(cuerpo: str):
+    """Identificadores que el propio State declara: locales y parámetros.
+
+    No hace falta que sea exhaustivo —solo evitar cantar un campo que en
+    realidad está sombreado por algo de dentro.
+    """
+    nombres = set()
+    for m in re.finditer(
+            r"\b(?:final|const|var|late|late\s+final)\s+"
+            r"(?:[\w<>?,\s]+?\s+)?(\w+)\s*[=;]", cuerpo):
+        nombres.add(m.group(1))
+    # parámetros de métodos y de lambdas: (a, b) => ... / (BuildContext c) {
+    for m in re.finditer(r"\(([^()]*)\)\s*(?:async\s*)?(?:=>|\{)", cuerpo):
+        for trozo in m.group(1).split(","):
+            palabras = re.findall(r"\w+", trozo)
+            if palabras:
+                nombres.add(palabras[-1])
+    return nombres
+
+
+def campos_sin_widget(fuente: str):
+    """Campos de un StatefulWidget referidos sin `widget.` desde su State.
+
+    Por qué existe: convertir un StatelessWidget en StatefulWidget mueve los
+    campos de sitio. Dentro del `State` ya no se llaman `place` y `onToggleSaved`
+    sino `widget.place` y `widget.onToggleSaved`, y olvidar el prefijo es el
+    error clásico de ese refactor. Compila a veces —si el State tiene algo con
+    el mismo nombre— y cuando no compila, el fallo aparece en el Mac, que es
+    donde no estoy. `_Hero` de la ficha de sitio pasó por ese refactor justo
+    antes de escribir esta regla.
+    """
+    problemas = []
+    clases = cuerpos_de_clase(fuente)
+
+    for nombre, (cuerpo, _) in clases.items():
+        if f"class {nombre} extends StatefulWidget" not in cuerpo:
+            continue
+
+        campos = set(re.findall(r"^\s+final\s+[\w<>?,\s]*?\b(\w+);",
+                                cuerpo, re.M))
+        if not campos:
+            continue
+
+        estado = next(
+            (c for c, (b, _p) in clases.items()
+             if re.search(rf"class {re.escape(c)} extends State<{re.escape(nombre)}>", b)),
+            None)
+        if estado is None:
+            continue
+
+        cuerpo_estado, pos = clases[estado]
+        # `widget.place` es correcto: se tapa antes de buscar los desnudos.
+        desnudo = re.sub(r"\bwidget\.\w+", " ", cuerpo_estado)
+        propios = _nombres_declarados(cuerpo_estado)
+
+        for campo in sorted(campos - propios):
+            # Ni detrás de un punto (otro.campo) ni como etiqueta de argumento
+            # con nombre (campo: ...), que no son referencias al campo.
+            m = re.search(rf"(?<![.\w$]){re.escape(campo)}\b(?!\s*:)", desnudo)
+            if m:
+                linea = fuente[:pos + m.start()].count("\n") + 1
+                problemas.append(
+                    f"línea {linea}: {estado} usa '{campo}' a secas; es un campo "
+                    f"de {nombre}, así que aquí se llama 'widget.{campo}'")
+    return problemas
+
+
 def revisar(ruta: pathlib.Path):
     fuente = ruta.read_text()
     problemas = []
@@ -181,6 +259,9 @@ def revisar(ruta: pathlib.Path):
 
     # 5. scrollables verticales dentro de un sliver
     problemas.extend(scrollable_dentro_de_sliver(limpio))
+
+    # 6. campos del widget usados sin `widget.` dentro de su State
+    problemas.extend(campos_sin_widget(limpio))
 
     return problemas
 

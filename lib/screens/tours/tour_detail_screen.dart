@@ -163,6 +163,10 @@ class _TourDetailScreenState extends State<TourDetailScreen> {
                                 letterSpacing: -0.5)),
                         const SizedBox(height: 10),
                         Wrap(spacing: 16, runSpacing: 6, children: [
+                          // La zona va primero: es lo que decide si el
+                          // recorrido cae cerca de donde ya estás.
+                          if (t.neighborhood != null)
+                            _dato(Icons.location_on_outlined, t.neighborhood!),
                           if (t.durationText != null)
                             _dato(Icons.schedule, t.durationText!),
                           _dato(Icons.place_outlined, '${t.stopsCount} stops'),
@@ -385,6 +389,15 @@ class _Parada extends StatelessWidget {
                       child: const Text("I'm here — next stop"),
                     ),
                   ],
+                  // El conector: cuánto se anda hasta la parada siguiente. Va
+                  // al pie del bloque, pegado a la línea del hilo, que es
+                  // donde el diseño lo pinta. La última parada no lo tiene
+                  // porque no hay siguiente, y con el tour bloqueado sí viaja:
+                  // es logística, no guion.
+                  if (!esUltima && parada.walkMinutesToNext != null) ...[
+                    const SizedBox(height: 14),
+                    _Caminata(minutos: parada.walkMinutesToNext!),
+                  ],
                 ],
               ),
             ),
@@ -393,6 +406,42 @@ class _Parada extends StatelessWidget {
       ),
     );
   }
+}
+
+/// El tramo a pie entre una parada y la siguiente.
+///
+/// Un dato pequeño que cambia la decisión entera: «18 min» entre dos paradas no
+/// se planifica igual que «3 min». Por eso va escrito, y no implícito en la
+/// distancia total del recorrido.
+class _Caminata extends StatelessWidget {
+  const _Caminata({required this.minutos});
+
+  final int minutos;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          color: AztecTheme.separador,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Emoji y no un icono de Material: el diseño usa 🚶 y además se
+            // lee igual en las dos plataformas sin pedir una fuente de iconos.
+            const Text('🚶', style: TextStyle(fontSize: 13)),
+            const SizedBox(width: 6),
+            Text(
+              'Walk $minutos min',
+              style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: AztecTheme.cuerpo),
+            ),
+          ],
+        ),
+      );
 }
 
 /// El audio de una parada, que todavía no suena.

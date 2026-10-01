@@ -53,6 +53,7 @@ MAPA = {
     "TourStatistics": "TourStatistics",
     "UserTourProgress": "UserTourProgress",
     "Tour": "Tour",
+    "PlaceImage": "PlaceImage",
 }
 
 # LakeFeature lee de dos sitios a la vez (properties y geometry), así que se
