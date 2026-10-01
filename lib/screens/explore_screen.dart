@@ -108,9 +108,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 child: _BarraDeFiltros(
                     actual: _filtro, onCambio: _cambiarFiltro),
               ),
-              SliverToBoxAdapter(
+              const SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+                  padding: EdgeInsets.fromLTRB(20, 16, 20, 14),
                   child: Text('Aztec Sites in Mexico City',
                       style: AztecTheme.h2),
                 ),
@@ -204,12 +204,12 @@ class _Encabezado extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 16, 0),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(20, 20, 16, 0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -221,7 +221,7 @@ class _Encabezado extends StatelessWidget {
               ],
             ),
           ),
-          const AccountButton(),
+          AccountButton(),
         ],
       ),
     );
