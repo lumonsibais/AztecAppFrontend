@@ -37,6 +37,10 @@ class AztecTheme {
   /// Separadores y bordes.
   static const Color linea = Color(0xFFEDE8E1);
 
+  /// El separador entre las filas de logística de la ficha. Es MÁS FRÍO que
+  /// `linea`, y en el diseño se usa solo ahí.
+  static const Color separador = Color(0xFFF0F3F8);
+
   // --- badges del catálogo ---
   /// "MUST SEE".
   static const Color mustSee = Color(0xFFD24B1A);

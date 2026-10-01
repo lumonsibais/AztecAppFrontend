@@ -36,6 +36,7 @@ COLORES = {
     "tintaSuave": "FF8A8A9A",
     "cuerpo": "FF6B7A8D",
     "linea": "FFEDE8E1",
+    "separador": "FFF0F3F8",
     "mustSee": "FFD24B1A",
     "quickStop": "FF26CDF1",
     "gratis": "FFF5C4B5",
