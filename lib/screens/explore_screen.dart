@@ -305,23 +305,30 @@ class _Error extends StatelessWidget {
             'app against the mock:\n'
             'flutter run --dart-define=API_BASE=http://localhost:4010';
 
-    return ListView(
-      padding: const EdgeInsets.all(32),
-      children: [
-        const SizedBox(height: 60),
-        const Icon(Icons.cloud_off, size: 46, color: AztecTheme.tintaSuave),
-        const SizedBox(height: 16),
-        Text(mensaje,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AztecTheme.tintaSuave, height: 1.5)),
-        const SizedBox(height: 20),
-        Center(
-          child: FilledButton(
+    // Columna, NO ListView. Esto vive dentro de un `SliverToBoxAdapter`, donde
+    // la altura que llega es infinita, y un ListView ahí dentro revienta con
+    // "Vertical viewport was given unbounded height". Funcionaba cuando Explore
+    // era una lista y esto era el cuerpo entero; al pasar a cuadrícula dejó de
+    // serlo, y el resultado era que **un error de red no enseñaba nada**:
+    // pantalla en blanco bajo los filtros. Quien scrollea es el
+    // CustomScrollView de fuera.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 60, 32, 32),
+      child: Column(
+        children: [
+          const Icon(Icons.cloud_off, size: 46, color: AztecTheme.tintaSuave),
+          const SizedBox(height: 16),
+          Text(mensaje,
+              textAlign: TextAlign.center,
+              style:
+                  const TextStyle(color: AztecTheme.tintaSuave, height: 1.5)),
+          const SizedBox(height: 20),
+          FilledButton(
             onPressed: onReintentar,
             child: const Text('Try again'),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -333,14 +340,12 @@ class _Vacio extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(32),
-      children: [
-        const SizedBox(height: 80),
-        Text(mensaje,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AztecTheme.tintaSuave)),
-      ],
+    // Columna por lo mismo que `_Error`: esto va dentro de un sliver.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 80, 32, 32),
+      child: Text(mensaje,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: AztecTheme.tintaSuave)),
     );
   }
 }

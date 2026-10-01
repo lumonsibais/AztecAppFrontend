@@ -82,6 +82,52 @@ def sin_comentarios_ni_cadenas(fuente: str, cadenas: bool = False) -> str:
     return "".join(salida)
 
 
+SCROLLABLES = ("ListView(", "GridView(", "SingleChildScrollView(",
+               "ListView.builder(", "ListView.separated(", "GridView.builder(")
+
+
+def scrollable_dentro_de_sliver(fuente: str):
+    """Un scrollable vertical como hijo de un sliver: altura infinita.
+
+    Dentro de un `SliverToBoxAdapter` la altura que llega es ilimitada, y ahí un
+    ListView revienta con "Vertical viewport was given unbounded height".
+
+    Esto ya pasó y costó caro: `_Error` y `_Vacio` de Explore eran ListView, y
+    funcionaban mientras Explore era una lista y ellos ERAN el cuerpo. Al pasar
+    la pantalla a cuadrícula quedaron dentro de un sliver, y el resultado fue
+    que un error de red **no enseñaba nada**: pantalla en blanco. `flutter
+    analyze` no lo ve —compila perfectamente— y solo aparece al provocar el
+    error con la app corriendo.
+
+    Se mira solo el caso inequívoco: un widget que se pasa como `child:` de un
+    SliverToBoxAdapter y cuyo `build` DEVUELVE un scrollable directamente. Si
+    devuelve otra cosa —un SizedBox que le acota la altura, por ejemplo— está
+    bien y no se toca: así la barra de filtros, que es un ListView horizontal
+    dentro de un SizedBox, no da un falso positivo.
+    """
+    problemas = []
+    hijos = set(re.findall(r"SliverToBoxAdapter\(\s*child:\s*(_?\w+)\(", fuente))
+
+    for clase in hijos:
+        m = re.search(
+            rf"class {re.escape(clase)} extends StatelessWidget.*?"
+            r"Widget build\(BuildContext \w+\) \{(.*?)\n  \}",
+            fuente, re.S)
+        if not m:
+            continue
+        cuerpo = m.group(1)
+        devuelve = re.search(r"return\s+(?:const\s+)?(\w+[.\w]*\()", cuerpo)
+        if not devuelve:
+            continue
+        if devuelve.group(1) in SCROLLABLES:
+            linea = fuente[:m.start()].count("\n") + 1
+            problemas.append(
+                f"línea {linea}: {clase} devuelve un {devuelve.group(1)[:-1]} y "
+                "se usa dentro de un SliverToBoxAdapter, donde la altura es "
+                "infinita: no se verá nada")
+    return problemas
+
+
 def revisar(ruta: pathlib.Path):
     fuente = ruta.read_text()
     problemas = []
@@ -132,6 +178,9 @@ def revisar(ruta: pathlib.Path):
         if not destino.exists():
             linea = fuente[:m.start()].count("\n") + 1
             problemas.append(f"línea {linea}: import a '{m.group(1)}', que no existe")
+
+    # 5. scrollables verticales dentro de un sliver
+    problemas.extend(scrollable_dentro_de_sliver(limpio))
 
     return problemas
 
