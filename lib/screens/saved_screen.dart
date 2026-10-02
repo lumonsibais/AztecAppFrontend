@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/models.dart';
+import '../services/session_scope.dart';
 import '../theme.dart';
+import '../widgets/account_button.dart';
 import '../widgets/place_card.dart';
 import 'place_detail_screen.dart';
 
@@ -20,25 +22,31 @@ class SavedScreen extends StatefulWidget {
 class _SavedScreenState extends State<SavedScreen> {
   Future<List<Place>>? _futuro;
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.api.haySesion) _futuro = widget.api.sitiosGuardados();
-  }
-
-  @override
-  void didUpdateWidget(SavedScreen old) {
-    super.didUpdateWidget(old);
-    if (widget.api.haySesion && _futuro == null) {
-      setState(() => _futuro = widget.api.sitiosGuardados());
-    }
-  }
+  /// La sesión de la última construcción. Sirve para detectar el cambio de
+  /// invitado a dentro —y de dentro a fuera— y reaccionar una sola vez.
+  bool _habiaSesion = false;
 
   @override
   Widget build(BuildContext context) {
+    // Escuchar la sesión en vez de comprobarla en `didUpdateWidget`: antes, la
+    // lista solo se cargaba si la pestaña se reconstruía por otro motivo, así
+    // que después de entrar desde otra pantalla Saved seguía enseñando el
+    // "necesitas una cuenta" hasta que algo la tocaba.
+    final sesion = SessionScope.of(context);
+
+    if (sesion.haySesion != _habiaSesion) {
+      _habiaSesion = sesion.haySesion;
+      // Al salir se tira la lista: dejarla pintada enseñaría los sitios de
+      // quien acaba de cerrar sesión.
+      _futuro = sesion.haySesion ? widget.api.sitiosGuardados() : null;
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Saved')),
-      body: !widget.api.haySesion
+      appBar: AppBar(
+        title: const Text('Saved'),
+        actions: const [AccountButton()],
+      ),
+      body: !sesion.haySesion
           ? _SinSesion(onEntrar: widget.onPedirEntrar)
           : RefreshIndicator(
               onRefresh: () async =>
@@ -60,11 +68,23 @@ class _SavedScreenState extends State<SavedScreen> {
                         'Tap the heart on any place in Explore.');
                   }
 
-                  return ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+                  // Cuadrícula y no lista, igual que Explore. Además de
+                  // ser lo coherente, `PlaceCard` necesita una altura acotada:
+                  // su descripción va en un `Expanded`, y un `Expanded` dentro
+                  // de una lista —donde la altura es libre— revienta en
+                  // ejecución con "incoming height constraints are unbounded".
+                  // Eso no lo ve `flutter analyze`: aparece al abrir Saved.
+                  return GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(17, 16, 17, 28),
                     physics: const AlwaysScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 14,
+                      mainAxisSpacing: 10,
+                      childAspectRatio: 170 / 274,
+                    ),
                     itemCount: sitios.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 14),
                     itemBuilder: (context, i) => PlaceCard(
                       place: sitios[i],
                       onToggleSaved: () async {

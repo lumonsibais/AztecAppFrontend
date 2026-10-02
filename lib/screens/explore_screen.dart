@@ -4,8 +4,11 @@ import '../api/api_client.dart';
 import '../api/models.dart';
 import '../config.dart';
 import '../theme.dart';
+import '../widgets/account_button.dart';
 import '../widgets/place_card.dart';
+import 'auth/auth_screen.dart' show pedirEntrar;
 import 'place_detail_screen.dart';
+import 'tours/tours_screen.dart';
 
 /// Pestaña Explore: el listado de sitios con los filtros de la barra.
 ///
@@ -54,7 +57,23 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   Future<void> _alternarGuardado(Place p) async {
-    if (!widget.api.haySesion) return;
+    // Sin sesión el corazón no se quedaba quieto sin explicar nada: se pide la
+    // cuenta en ese momento, diciendo para qué, y si se consigue entrar se
+    // guarda el sitio que se quería guardar. Obligar a entrar ANTES de poder
+    // tocar el corazón haría que nadie llegara a saber para qué sirve.
+    if (!widget.api.haySesion) {
+      final entro = await pedirEntrar(
+        context,
+        motivo: 'Sign in to save ${p.name} and find it again later.',
+        registro: true,
+      );
+      if (!entro || !mounted) return;
+      // Al entrar, el servidor ya sabe qué tiene guardado esta cuenta: se
+      // recarga la lista para que los corazones reflejen eso y no lo que se
+      // veía como invitado.
+      setState(() => _futuro = _cargar());
+    }
+
     try {
       if (p.isSaved == true) {
         await widget.api.quitarSitio(p.id);
@@ -72,45 +91,95 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Sin AppBar: el diseño pone un encabezado dentro del contenido —"Start
+    // exploring" en Playfair sobre la ciudad— y el acceso a la cuenta como un
+    // círculo coral a su derecha. Una AppBar de Material no da esa forma.
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Explore'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
-          child: _BarraDeFiltros(actual: _filtro, onCambio: _cambiarFiltro),
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: () async => setState(() => _futuro = _cargar()),
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              const SliverToBoxAdapter(child: _Encabezado()),
+              SliverToBoxAdapter(
+                child: _BarraDeFiltros(
+                    actual: _filtro, onCambio: _cambiarFiltro),
+              ),
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(20, 16, 20, 14),
+                  child: Text('Aztec Sites in Mexico City',
+                      style: AztecTheme.h2),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(17, 0, 17, 14),
+                  child: _EntradaTours(
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => ToursScreen(api: widget.api),
+                    )),
+                  ),
+                ),
+              ),
+              _cuadricula(),
+            ],
+          ),
         ),
       ),
-      body: RefreshIndicator(
-        onRefresh: () async => setState(() => _futuro = _cargar()),
-        child: FutureBuilder<List<Place>>(
-          future: _futuro,
-          builder: (context, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snap.hasError) {
-              return _Error(
-                error: snap.error!,
-                onReintentar: () => setState(() => _futuro = _cargar()),
-              );
-            }
+    );
+  }
 
-            final sitios = snap.data ?? const <Place>[];
-            if (sitios.isEmpty) {
-              return const _Vacio(mensaje: 'No places match this filter.');
-            }
+  Widget _cuadricula() {
+    return FutureBuilder<List<Place>>(
+      future: _futuro,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.only(top: 80),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+        if (snap.hasError) {
+          return SliverToBoxAdapter(
+            child: _Error(
+              error: snap.error!,
+              onReintentar: () => setState(() => _futuro = _cargar()),
+            ),
+          );
+        }
 
-            return ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-              physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: sitios.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 14),
-              itemBuilder: (context, i) {
+        final sitios = snap.data ?? const <Place>[];
+        if (sitios.isEmpty) {
+          return const SliverToBoxAdapter(
+            child: _Vacio(mensaje: 'No places match this filter.'),
+          );
+        }
+
+        // Dos columnas, como el diseño. `childAspectRatio` sale de las medidas
+        // del archivo: tarjetas de 170×274.
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(17, 0, 17, 28),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 14,
+              mainAxisSpacing: 10,
+              childAspectRatio: 170 / 274,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, i) {
                 final p = sitios[i];
                 return PlaceCard(
                   place: p,
-                  onToggleSaved:
-                      widget.api.haySesion ? () => _alternarGuardado(p) : null,
+                  // Siempre activo, con o sin sesión: si no hay, el propio
+                  // callback pide la cuenta.
+                  onToggleSaved: () => _alternarGuardado(p),
                   onTap: () async {
                     await Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) =>
@@ -120,9 +189,40 @@ class _ExploreScreenState extends State<ExploreScreen> {
                   },
                 );
               },
-            );
-          },
-        ),
+              childCount: sitios.length,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// "Start exploring" y la ciudad, con el acceso a la cuenta a la derecha.
+class _Encabezado extends StatelessWidget {
+  const _Encabezado();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(20, 20, 16, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Start exploring', style: AztecTheme.h1),
+                SizedBox(height: 2),
+                // La ciudad es fija a propósito: el producto es la CDMX. El día
+                // que haya otra, sale de la ubicación.
+                Text('📍 Mexico City, MX', style: AztecTheme.descripcion),
+              ],
+            ),
+          ),
+          AccountButton(),
+        ],
       ),
     );
   }
@@ -143,25 +243,44 @@ class _BarraDeFiltros extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Píldoras de 44 de alto, no `ChoiceChip`: el chip de Material trae su
+    // propia forma, su propio relleno y su propia animación de selección, y
+    // ninguna de las tres es la del diseño.
     return SizedBox(
-      height: 52,
+      height: 60,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
         children: _etiquetas.entries.map((e) {
           final activo = e.key == actual;
           return Padding(
-            padding: const EdgeInsets.only(right: 8, bottom: 10),
-            child: ChoiceChip(
-              label: Text(e.value),
-              selected: activo,
-              onSelected: (_) => onCambio(e.key),
-              showCheckmark: false,
-              selectedColor: AztecTheme.coral,
-              labelStyle: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: activo ? Colors.white : AztecTheme.tinta,
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => onCambio(e.key),
+              child: Container(
+                height: 44,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 13),
+                decoration: BoxDecoration(
+                  color: activo ? AztecTheme.coral : Colors.white,
+                  borderRadius:
+                      BorderRadius.circular(AztecTheme.radioPildora),
+                  border: Border.all(
+                      color: activo ? AztecTheme.coral : AztecTheme.linea),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(activo ? 0.17 : 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  e.value,
+                  style: AztecTheme.textoBoton.copyWith(
+                    color: activo ? Colors.white : AztecTheme.tinta,
+                  ),
+                ),
               ),
             ),
           );
@@ -186,23 +305,30 @@ class _Error extends StatelessWidget {
             'app against the mock:\n'
             'flutter run --dart-define=API_BASE=http://localhost:4010';
 
-    return ListView(
-      padding: const EdgeInsets.all(32),
-      children: [
-        const SizedBox(height: 60),
-        const Icon(Icons.cloud_off, size: 46, color: AztecTheme.tintaSuave),
-        const SizedBox(height: 16),
-        Text(mensaje,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AztecTheme.tintaSuave, height: 1.5)),
-        const SizedBox(height: 20),
-        Center(
-          child: FilledButton(
+    // Columna, NO ListView. Esto vive dentro de un `SliverToBoxAdapter`, donde
+    // la altura que llega es infinita, y un ListView ahí dentro revienta con
+    // "Vertical viewport was given unbounded height". Funcionaba cuando Explore
+    // era una lista y esto era el cuerpo entero; al pasar a cuadrícula dejó de
+    // serlo, y el resultado era que **un error de red no enseñaba nada**:
+    // pantalla en blanco bajo los filtros. Quien scrollea es el
+    // CustomScrollView de fuera.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 60, 32, 32),
+      child: Column(
+        children: [
+          const Icon(Icons.cloud_off, size: 46, color: AztecTheme.tintaSuave),
+          const SizedBox(height: 16),
+          Text(mensaje,
+              textAlign: TextAlign.center,
+              style:
+                  const TextStyle(color: AztecTheme.tintaSuave, height: 1.5)),
+          const SizedBox(height: 20),
+          FilledButton(
             onPressed: onReintentar,
             child: const Text('Try again'),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -214,14 +340,71 @@ class _Vacio extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(32),
-      children: [
-        const SizedBox(height: 80),
-        Text(mensaje,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AztecTheme.tintaSuave)),
-      ],
+    // Columna por lo mismo que `_Error`: esto va dentro de un sliver.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 80, 32, 32),
+      child: Text(mensaje,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: AztecTheme.tintaSuave)),
+    );
+  }
+}
+
+
+/// La entrada a los tours, arriba del listado de Explore.
+///
+/// DECISIÓN DE DISEÑO, y conviene que se vea: el diseño tiene cuatro pestañas y
+/// los tours no son una de ellas, así que hay que meterlos por algún lado.
+/// Aquí, porque un tour es una forma de recorrer sitios y Explore es donde se
+/// buscan sitios. Si el Figma dice otra cosa, esto es una tarjeta y se mueve de
+/// sitio en dos minutos.
+class _EntradaTours extends StatelessWidget {
+  const _EntradaTours({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AztecTheme.arena.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: const Icon(Icons.route_outlined,
+                    size: 22, color: AztecTheme.tinta),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Self-guided tours',
+                        style: TextStyle(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w800,
+                            height: 1.2)),
+                    SizedBox(height: 3),
+                    Text('Walk a route with the story along the way.',
+                        style: AztecTheme.tagline),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AztecTheme.tintaSuave),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -76,17 +76,54 @@ docker-compose publica al Mac.
 `--dart-define=API_BASE=http://10.0.2.2:5001`. En el simulador de iOS
 `localhost` funciona tal cual.
 
+## Antes de compilar: las tipografías
+
+```bash
+bash tools/traer-fuentes.sh
+```
+
+Una vez por copia del repo. **Sin esto `flutter run` no compila**: falla con
+*unable to locate asset entry*, que no dice qué archivo falta.
+
+El diseño usa **Playfair Display** para los títulos e **Inter** para todo lo
+demás, y van empaquetadas, no por el paquete `google_fonts`. La razón es el
+producto: esta app se usa caminando por el Centro con mala señal, y
+`google_fonts` las descarga en el primer arranque — hasta que terminara, la app
+enseñaría la tipografía del sistema, y sin datos nunca. Los `.ttf` no se
+versionan porque son binarios que no cambian.
+
+## El sistema de diseño
+
+`lib/theme.dart` sale del archivo de Figma, no de aproximaciones. Los estilos de
+texto llevan **los nombres del archivo** —`h1`, `h2`, `h3`, `cita`,
+`tituloSitio`, `capsula`— para que al mirar el diseño y el código se hable del
+mismo estilo.
+
+`tools/check_tokens.py` compara los dos. Existe porque el tema venía con una
+paleta *parecida* y ningún color exacto: el coral estaba a dos puntos, el gris
+de texto a bastantes más. A ojo cuadraba, así que nadie lo notó. Cuando se lea
+otra pantalla del diseño y aparezca un color nuevo, se añade a la tabla de ese
+archivo y deja de poder cambiar sin que nadie se entere.
+
 ## Cómo está montado
 
 ```
 lib/
-  config.dart        entorno: a qué servidor apunta y en qué idioma
+  config.dart          entorno: a qué servidor apunta y en qué idioma
   api/
-    models.dart      los modelos, escritos a mano contra openapi.json
-    api_client.dart  el cliente: desenvuelve {success, data} una sola vez
-  screens/           una pantalla por pestaña, más la ficha de sitio
-  widgets/           la tarjeta de sitio de Explore
-  theme.dart         colores y tipografía del diseño
+    models.dart        los modelos, escritos a mano contra openapi.json
+    api_client.dart    el cliente: desenvuelve {success, data} una sola vez
+                       y renueva el token cuando el servidor da 401
+  services/
+    session.dart       quién está dentro; tokens en el Keychain/Keystore
+    session_scope.dart reparte la sesión por el árbol de widgets
+  screens/             una pantalla por pestaña, más la ficha de sitio
+    auth/              crear cuenta y entrar
+    profile/           la cuenta: correo, desbloqueo y salir
+    tours/             el catálogo de tours y la ficha con sus paradas
+    history/           el lector de artículos de la guía histórica
+  widgets/             la tarjeta de sitio y el botón de cuenta
+  theme.dart           colores y tipografía del diseño
 ```
 
 Una sola dependencia de red: `http`. Sin dio, sin retrofit, sin `build_runner`.
@@ -107,7 +144,17 @@ necesitan Dart instalado**:
 python3 tools/check_dart_contract.py                       # modelos vs. openapi.json
 python3 tools/check_against_live.py http://localhost:5001  # modelos vs. respuestas reales
 python3 tools/sanity_dart.py                               # llaves, imports, interpolaciones
+python3 tools/check_sesion_viva.py http://localhost:5001   # la lógica de sesión vs. el backend
+python3 tools/check_tokens.py                              # el tema vs. el diseño de Figma
 ```
+
+`check_against_live.py` hace **dos pasadas**: una anónima y otra con una cuenta
+que tiene el contenido desbloqueado, que se crea sola al vuelo. La segunda es la
+que importa y la que faltaba: las paradas de un tour, el audio, el cuerpo de un
+artículo y el `whyVisit` de un sitio **no viajan** si no se ha pagado, así que
+la pasada anónima nunca los veía y daba luz verde sin haber mirado la mitad del
+contrato. Necesita el backend con `PAYMENTS_ALLOW_UNVERIFIED=true`; si no lo
+está, esas sondas se saltan diciéndolo.
 
 La segunda es la que más vale: compara los modelos con lo que el servidor manda
 **ahora mismo**. Caza justo lo que tumba una app Flutter en el móvil —un campo
@@ -115,8 +162,41 @@ que llega `null` y se lee sin `?`, una clave mal escrita, un tipo que no
 cuadra— y que el compilador de Dart no ve, porque para él `j['claveMalEscrita']`
 es un `null` perfectamente legal.
 
+La cuarta reproduce en Python la lógica de sesión de `api_client.dart` y la corre
+contra el backend: que un 401 renueve el token y repita la petición, que no entre
+en bucle si la renovación también falla, que salir revoque los dos tokens, y que
+un 401 por contraseña incorrecta no se confunda con un token caducado. Son cosas
+del protocolo, no de Dart, y así se rompen aquí en vez de en un dispositivo.
+
 Ninguna sustituye a `flutter analyze`, que comprueba tipos y sintaxis y hay que
 correr en el Mac.
+
+## La sesión
+
+El token de acceso vive 30 días y el de refresco 90. Con el de refresco se piden
+tokens de acceso nuevos **sin contraseña**, así que a efectos prácticos ES la
+contraseña: por eso los dos van a `flutter_secure_storage` —Keychain en iOS,
+Keystore en Android— y no a `shared_preferences`, que los dejaría en un fichero
+en claro dentro del sandbox de la app.
+
+Tres cosas que no se ven leyendo las pantallas:
+
+- **La renovación es automática y de una sola vez.** Al abrir la app salen varias
+  peticiones juntas; si el token ha caducado todas reciben 401 a la vez. El
+  cliente comparte un único `Future` de refresco, así que se pide un token y las
+  demás esperan ese mismo resultado.
+- **Salir revoca los dos tokens.** `/users/logout` revoca el token con el que se
+  le llama, uno por llamada. Llamarlo solo con el de acceso —que era lo que
+  había— dejaba el de refresco vivo 90 días: "cerrar sesión" no cerraba nada.
+- **Se puede recorrer la app entera sin cuenta.** La cuenta se pide en el momento
+  en que hace falta —al tocar un corazón, al abrir Saved, al pulsar desbloquear—
+  y diciendo para qué. Obligar a entrar en el arranque haría que nadie llegara a
+  ver para qué sirve.
+
+**Android:** `minSdkVersion` está fijado a **23** en `android/app/build.gradle`,
+no en `flutter.minSdkVersion` (que es 21). Lo exige
+`flutter_secure_storage` con `encryptedSharedPreferences`. Con 21 la compilación
+falla en el manifest merger y el error no menciona el paquete por ningún lado.
 
 ## Lo que falta, y por qué
 
@@ -127,13 +207,22 @@ correr en el Mac.
   el overlay llega, que `surfaceType` decide el color y que el conmutador
   1500/2026 funciona de punta a punta—. Al enchufar Google Maps,
   `LakeFeature.rings` va tal cual a `Polygon(points: ...)`.
-- **Autenticación de verdad.** Hoy hay un atajo de desarrollo en Saved para
-  poder probar el corazón contra el backend. Falta Google y Apple, y guardar
-  los tokens en `flutter_secure_storage` — un JWT en `SharedPreferences` es
-  texto plano en el disco.
-- **La compra.** El botón de 15 USD está pintado pero no cobra:
-  `providers.verificar()` del backend responde 501 a propósito mientras no haya
-  pasarela.
+- **El audio de los tours.** Las paradas enseñan que hay narración y cuánto
+  dura, pero no suena: reproducirlo necesita otro paquete (`just_audio` o
+  `audioplayers`) y, sobre todo, poder probarlo en un dispositivo.
+- **Entrar con Google y con Apple.** Los dos necesitan configuración en sus
+  consolas y un endpoint que el backend todavía no tiene. No se pinta un botón
+  que no funciona: por ahora la cuenta es correo y contraseña, que sí funciona de
+  punta a punta.
+- **La compra.** El backend ya cobra por las tiendas —verifica recibos de la App
+  Store y de Google Play, tiene `/payments/confirm` y `/payments/restore`— y lo
+  que falta es la parte del cliente con `in_app_purchase`. No se puede escribir
+  entera sin que existan los productos dados de alta en App Store Connect y en
+  Play Console, porque no habría contra qué probarla. El botón de desbloquear ya
+  hace la mitad que sí depende de nosotros: pedir la cuenta, que es a quien se le
+  concede el acceso.
+- **Restore Purchases.** Apple lo exige en revisión para productos no
+  consumibles. El endpoint está; el botón va con la compra.
 
 ## La línea del paywall
 

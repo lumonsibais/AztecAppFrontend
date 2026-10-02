@@ -141,6 +141,21 @@ class HistoricalContext {
       );
 }
 
+class PlaceImage {
+  final String url;
+
+  /// Pie de foto. Opcional: la mayoría no lo necesita, y obligar a escribir uno
+  /// acaba produciendo pies que repiten el nombre del sitio.
+  final String? caption;
+
+  const PlaceImage({required this.url, this.caption});
+
+  factory PlaceImage.fromJson(Map<String, dynamic> j) => PlaceImage(
+        url: j['url'] as String,
+        caption: _asString(j['caption']),
+      );
+}
+
 class Place {
   final String id;
   final String name;
@@ -161,7 +176,14 @@ class Place {
   final String? historicalSignificance;
   final int? estimatedVisitDuration;
   final String? visitDurationText;
+  /// La PORTADA. Se conserva por compatibilidad; para pintar, usa `images`.
   final String? imageUrl;
+
+  /// La galería del carrusel, en orden. Cuando el sitio solo tiene portada,
+  /// trae esa sola, así que **nunca llega vacía habiendo foto**: no hace falta
+  /// mirar `imageUrl` por separado.
+  final List<PlaceImage> images;
+
   final Badges badges;
   final ContentAccess access;
   final NearbyServices services;
@@ -195,6 +217,7 @@ class Place {
     this.estimatedVisitDuration,
     this.visitDurationText,
     this.imageUrl,
+    this.images = const [],
     this.isSaved,
     this.openingHours,
     this.howToGetThere,
@@ -217,6 +240,9 @@ class Place {
         estimatedVisitDuration: _asInt(j['estimatedVisitDuration']),
         visitDurationText: _asString(j['visitDurationText']),
         imageUrl: _asString(j['imageUrl']),
+        images: ((j['images'] as List<dynamic>?) ?? const [])
+            .map((i) => PlaceImage.fromJson(i as Map<String, dynamic>))
+            .toList(),
         badges: Badges.fromJson(j['badges'] as Map<String, dynamic>),
         access: ContentAccess.fromJson(j['contentAccess'] as Map<String, dynamic>),
         services: NearbyServices.fromJson(
@@ -471,4 +497,276 @@ class AuthTokens {
         refreshToken: j['refreshToken'] as String,
         user: User.fromJson(j['user'] as Map<String, dynamic>),
       );
+}
+
+// ---------------------------------------------------------------------------
+// tours autoguiados
+// ---------------------------------------------------------------------------
+
+class TourAudio {
+  /// null cuando el tour está bloqueado para quien mira. Que sea null NO
+  /// significa que no haya audio: para eso está `isLocked`.
+  final String? url;
+  final int? durationSeconds;
+
+  /// true cuando hay audio pero no se ha pagado. Es la diferencia entre
+  /// "esta parada no lleva narración" y "la lleva y no la has comprado", y la
+  /// pantalla las pinta distinto.
+  final bool isLocked;
+
+  const TourAudio({required this.isLocked, this.url, this.durationSeconds});
+
+  factory TourAudio.fromJson(Map<String, dynamic> j) => TourAudio(
+        url: _asString(j['url']),
+        durationSeconds: _asInt(j['durationSeconds']),
+        isLocked: _asBool(j['isLocked']),
+      );
+
+  bool get hayAudio => url != null || isLocked;
+}
+
+class TourStop {
+  final String id;
+  final int position;
+  final String placeId;
+
+  /// El puente hablado hacia la parada siguiente. null si el tour está
+  /// bloqueado: es guion nuestro y va detrás del candado.
+  final String? transitionText;
+
+  /// Minutos andando HASTA LA PARADA SIGUIENTE. La última lo trae null.
+  ///
+  /// Viaja también con el tour bloqueado: es logística, como la taquilla de un
+  /// museo. Lo que se paga es el guion y el audio.
+  final int? walkMinutesToNext;
+
+  final TourAudio audio;
+
+  /// El sitio completo. El backend lo manda embebido para que la app no tenga
+  /// que pedir una ficha por parada.
+  final Place? place;
+
+  const TourStop({
+    required this.id,
+    required this.position,
+    required this.placeId,
+    required this.audio,
+    this.transitionText,
+    this.walkMinutesToNext,
+    this.place,
+  });
+
+  factory TourStop.fromJson(Map<String, dynamic> j) => TourStop(
+        id: j['id'] as String,
+        position: (j['position'] as num).toInt(),
+        placeId: j['placeId'] as String,
+        transitionText: _asString(j['transitionText']),
+        walkMinutesToNext: _asInt(j['walkMinutesToNext']),
+        audio: TourAudio.fromJson(j['audio'] as Map<String, dynamic>),
+        place: j['place'] == null
+            ? null
+            : Place.fromJson(j['place'] as Map<String, dynamic>),
+      );
+}
+
+class TourStatistics {
+  final int? views;
+  final int? completions;
+
+  const TourStatistics({this.views, this.completions});
+
+  factory TourStatistics.fromJson(Map<String, dynamic> j) => TourStatistics(
+        views: _asInt(j['views']),
+        completions: _asInt(j['completions']),
+      );
+}
+
+/// El avance de ESTA cuenta dentro del tour.
+///
+/// Solo viaja en `/tours/user/tours`. En el listado general y en la ficha no
+/// viene, y por eso es nullable en `Tour`: que falte significa "no empezado",
+/// no "sin datos".
+class UserTourProgress {
+  final bool isCompleted;
+  final int? currentStopIndex;
+  final int? rating;
+  final String? startedAt;
+  final String? completedAt;
+
+  const UserTourProgress({
+    required this.isCompleted,
+    this.currentStopIndex,
+    this.rating,
+    this.startedAt,
+    this.completedAt,
+  });
+
+  factory UserTourProgress.fromJson(Map<String, dynamic> j) => UserTourProgress(
+        isCompleted: _asBool(j['isCompleted']),
+        currentStopIndex: _asInt(j['currentStopIndex']),
+        rating: _asInt(j['rating']),
+        startedAt: _asString(j['startedAt']),
+        completedAt: _asString(j['completedAt']),
+      );
+}
+
+/// El avance tal como lo devuelven /start, /progress y /complete.
+///
+/// Es más completo que `UserTourProgress` y viene del servidor DESPUÉS de
+/// guardar. La pantalla pinta esto y no lo que acaba de mandar: con la app
+/// abierta en dos sitios, fiarse de lo enviado es divergir en silencio.
+class TourProgress {
+  final String id;
+  final String tourId;
+  final int? currentStopIndex;
+  final bool isCompleted;
+  final int? rating;
+  final String? notes;
+  final String? startedAt;
+  final String? completedAt;
+  final double? lastLatitude;
+  final double? lastLongitude;
+  final String? updatedAt;
+
+  const TourProgress({
+    required this.id,
+    required this.tourId,
+    required this.isCompleted,
+    this.currentStopIndex,
+    this.rating,
+    this.notes,
+    this.startedAt,
+    this.completedAt,
+    this.lastLatitude,
+    this.lastLongitude,
+    this.updatedAt,
+  });
+
+  factory TourProgress.fromJson(Map<String, dynamic> j) {
+    final donde = (j['lastLocation'] as Map<String, dynamic>?) ?? const {};
+    return TourProgress(
+      id: j['id'] as String,
+      tourId: j['tourId'] as String,
+      currentStopIndex: _asInt(j['currentStopIndex']),
+      isCompleted: _asBool(j['isCompleted']),
+      rating: _asInt(j['rating']),
+      notes: _asString(j['notes']),
+      startedAt: _asString(j['startedAt']),
+      completedAt: _asString(j['completedAt']),
+      lastLatitude: _asDouble(donde['latitude']),
+      lastLongitude: _asDouble(donde['longitude']),
+      updatedAt: _asString(j['updatedAt']),
+    );
+  }
+}
+
+class Tour {
+  final String id;
+  final String title;
+  final String? description;
+  final String? status;
+
+  final bool isFree;
+
+  /// Lo que el tour ES: de pago o no.
+  final bool isLocked;
+
+  /// Lo que quien mira PUEDE hacer con él ahora mismo. Los dos hacen falta:
+  /// un tour de pago ya comprado llega con isLocked=true y
+  /// unlockedForViewer=true, y lo que decide si se pinta el candado es el
+  /// segundo.
+  final bool unlockedForViewer;
+
+  final int? estimatedDuration;
+  final String? durationText;
+  final String? difficultyLevel;
+
+  /// La zona por la que transcurre: "Centro Histórico".
+  final String? neighborhood;
+
+  final String? imageUrl;
+  final double? totalDistance;
+  final bool hasEntryFees;
+  final int stopsCount;
+  final bool includesAudio;
+
+  /// Valoración editorial nuestra, no media de usuarios.
+  final double? rating;
+
+  final TourStatistics statistics;
+  final String? createdAt;
+  final String? updatedAt;
+
+  /// Solo con el desbloqueo.
+  final String? contentDescription;
+
+  /// Vacía en el listado y en el teaser. El backend solo manda las paradas en
+  /// la ficha Y con el tour desbloqueado, así que una lista vacía puede
+  /// significar "no las pediste" o "no las has pagado": `stopsCount` dice
+  /// cuántas hay en realidad.
+  final List<TourStop> stops;
+
+  /// Solo en /tours/user/tours. null = esta cuenta no lo ha empezado.
+  final UserTourProgress? progress;
+
+  const Tour({
+    required this.id,
+    required this.title,
+    required this.isFree,
+    required this.isLocked,
+    required this.unlockedForViewer,
+    required this.hasEntryFees,
+    required this.stopsCount,
+    required this.includesAudio,
+    required this.statistics,
+    required this.stops,
+    this.description,
+    this.status,
+    this.estimatedDuration,
+    this.durationText,
+    this.difficultyLevel,
+    this.neighborhood,
+    this.imageUrl,
+    this.totalDistance,
+    this.rating,
+    this.createdAt,
+    this.updatedAt,
+    this.contentDescription,
+    this.progress,
+  });
+
+  factory Tour.fromJson(Map<String, dynamic> j) => Tour(
+        id: j['id'] as String,
+        title: j['title'] as String,
+        description: _asString(j['description']),
+        status: _asString(j['status']),
+        isFree: _asBool(j['isFree']),
+        isLocked: _asBool(j['isLocked']),
+        unlockedForViewer: _asBool(j['unlockedForViewer']),
+        estimatedDuration: _asInt(j['estimatedDuration']),
+        durationText: _asString(j['durationText']),
+        difficultyLevel: _asString(j['difficultyLevel']),
+        neighborhood: _asString(j['neighborhood']),
+        imageUrl: _asString(j['imageUrl']),
+        totalDistance: _asDouble(j['totalDistance']),
+        hasEntryFees: _asBool(j['hasEntryFees']),
+        stopsCount: _asInt(j['stopsCount']) ?? 0,
+        includesAudio: _asBool(j['includesAudio']),
+        rating: _asDouble(j['rating']),
+        statistics: TourStatistics.fromJson(
+            (j['statistics'] as Map<String, dynamic>?) ?? const {}),
+        createdAt: _asString(j['createdAt']),
+        updatedAt: _asString(j['updatedAt']),
+        contentDescription: _asString(j['contentDescription']),
+        stops: ((j['stops'] as List<dynamic>?) ?? const [])
+            .map((s) => TourStop.fromJson(s as Map<String, dynamic>))
+            .toList(),
+        progress: j['progress'] == null
+            ? null
+            : UserTourProgress.fromJson(j['progress'] as Map<String, dynamic>),
+      );
+
+  /// Si se pinta el candado. No es `isLocked`: un tour de pago ya comprado
+  /// sigue siendo de pago.
+  bool get bajoCandado => !unlockedForViewer;
 }

@@ -3,11 +3,19 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../theme.dart';
 
-/// Tarjeta de sitio del listado de Explore.
+/// Tarjeta de sitio, tal como la define el diseño (HU 2 y HU3).
 ///
-/// Enseña lo que el diseño pide: imagen, la etiqueta MUST SEE cuando la
-/// curaduría lo marca, título, tagline, valoración, duración y —cuando la
-/// petición llevó coordenadas— la distancia que calculó el servidor.
+/// La forma importa y antes estaba al revés: **la foto manda**. 200 px de
+/// imagen con un degradado hacia abajo, y encima de la foto van los badges, el
+/// candado, el corazón y el título en blanco. Lo único que vive fuera de la
+/// imagen es la descripción, en gris.
+///
+/// La versión anterior ponía el título y todos los metadatos debajo, sobre
+/// fondo blanco, con la foto como mera ilustración. Se leía bien pero no era el
+/// producto: en el diseño, lo primero es el sitio.
+///
+/// Medidas del archivo: tarjeta de 170×274 con radio 24, foto de 200,
+/// degradado desde `rgba(26,16,8,0.72)` hasta transparente al 55%.
 class PlaceCard extends StatelessWidget {
   const PlaceCard({
     super.key,
@@ -19,35 +27,42 @@ class PlaceCard extends StatelessWidget {
   final Place place;
   final VoidCallback onTap;
 
-  /// null cuando no hay sesión: sin cuenta no hay corazón que pintar.
+  /// Siempre conectado: sin sesión, quien llama se encarga de pedir la cuenta.
   final VoidCallback? onToggleSaved;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _Portada(place: place, onToggleSaved: onToggleSaved),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(place.name, style: AztecTheme.tituloTarjeta),
-                  if (place.tagline != null) ...[
-                    const SizedBox(height: 5),
-                    Text(place.tagline!, style: AztecTheme.tagline),
-                  ],
-                  const SizedBox(height: 11),
-                  _Metadatos(place: place),
-                ],
-              ),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AztecTheme.radioTarjeta),
+        boxShadow: AztecTheme.sombraTarjeta,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AztecTheme.radioTarjeta),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _Portada(place: place, onToggleSaved: onToggleSaved),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                    child: Text(
+                      place.tagline ?? place.description ?? '',
+                      style: AztecTheme.descripcion,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -62,66 +77,76 @@ class _Portada extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        SizedBox(
-          height: 168,
-          width: double.infinity,
-          child: place.imageUrl == null
-              ? Container(
-                  color: AztecTheme.arena.withOpacity(0.35),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    _icono(place.placeType),
-                    size: 46,
-                    color: AztecTheme.tintaSuave.withOpacity(0.5),
-                  ),
-                )
-              : Image.network(
-                  place.imageUrl!,
-                  fit: BoxFit.cover,
-                  // Una imagen rota no puede tumbar el listado.
-                  errorBuilder: (_, __, ___) => Container(
-                    color: AztecTheme.arena.withOpacity(0.35),
-                  ),
-                ),
-        ),
-        if (place.esMustSee)
-          const Positioned(
-            left: 12,
-            top: 12,
-            child: _Etiqueta(texto: 'MUST SEE', fondo: AztecTheme.coral),
-          ),
-        if (place.esQuickStop)
-          const Positioned(
-            left: 12,
-            top: 12,
-            child: _Etiqueta(texto: 'QUICK STOP', fondo: AztecTheme.tinta),
-          ),
-        if (place.muestraCandado)
-          const Positioned(
-            right: 12,
-            top: 12,
-            child: CircleAvatar(
-              radius: 15,
-              backgroundColor: Colors.black54,
-              child: Icon(Icons.lock, size: 16, color: Colors.white),
-            ),
-          ),
-        if (onToggleSaved != null && !place.muestraCandado)
-          Positioned(
-            right: 8,
-            top: 8,
-            child: IconButton(
-              onPressed: onToggleSaved,
-              icon: Icon(
-                place.isSaved == true ? Icons.favorite : Icons.favorite_border,
-                color: place.isSaved == true ? AztecTheme.coral : Colors.white,
-                shadows: const [Shadow(blurRadius: 6, color: Colors.black45)],
+    return SizedBox(
+      height: 200,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _imagen(),
+
+          // El degradado existe para que el título blanco se lea sobre
+          // cualquier foto. Sin él, una imagen clara deja el nombre invisible.
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [Color(0xB81A1008), Color(0x001A1008)],
+                stops: [0, 0.55],
               ),
             ),
           ),
-      ],
+
+          // Badges y título, abajo a la izquierda.
+          Positioned(
+            left: 10,
+            right: 10,
+            bottom: 10,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _Badges(place: place),
+                const SizedBox(height: 6),
+                Text(
+                  place.name,
+                  style: AztecTheme.tituloSitio,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+
+          if (onToggleSaved != null)
+            Positioned(top: 10, right: 10, child: _Corazon(
+              guardado: place.isSaved == true,
+              onPulsar: onToggleSaved!,
+            )),
+        ],
+      ),
+    );
+  }
+
+  Widget _imagen() {
+    if (place.imageUrl == null) {
+      return Container(
+        color: AztecTheme.arena.withOpacity(0.5),
+        alignment: Alignment.center,
+        child: Icon(
+          _icono(place.placeType),
+          size: 46,
+          color: Colors.white.withOpacity(0.7),
+        ),
+      );
+    }
+    return Image.network(
+      place.imageUrl!,
+      fit: BoxFit.cover,
+      // Una imagen rota no puede tumbar el listado.
+      errorBuilder: (_, __, ___) =>
+          Container(color: AztecTheme.arena.withOpacity(0.5)),
     );
   }
 
@@ -134,90 +159,102 @@ class _Portada extends StatelessWidget {
       };
 }
 
-class _Etiqueta extends StatelessWidget {
-  const _Etiqueta({required this.texto, required this.fondo});
-
-  final String texto;
-  final Color fondo;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: fondo,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        texto,
-        style: AztecTheme.etiqueta.copyWith(color: Colors.white),
-      ),
-    );
-  }
-}
-
-class _Metadatos extends StatelessWidget {
-  const _Metadatos({required this.place});
+/// La fila de etiquetas sobre la foto: curaduría, entrada gratis y candado.
+class _Badges extends StatelessWidget {
+  const _Badges({required this.place});
 
   final Place place;
 
   @override
   Widget build(BuildContext context) {
-    final trozos = <Widget>[];
+    final etiquetas = <Widget>[];
 
-    if (place.rating != null) {
-      trozos.add(Row(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.star_rounded, size: 17, color: AztecTheme.coral),
-        const SizedBox(width: 3),
-        Text(place.rating!.toStringAsFixed(1),
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-      ]));
+    if (place.esMustSee) {
+      etiquetas.add(const _Pildora(
+          texto: 'MUST SEE', fondo: AztecTheme.mustSee, colorTexto: Colors.white));
+    } else if (place.esQuickStop) {
+      etiquetas.add(const _Pildora(
+          texto: 'QUICK STOP',
+          fondo: AztecTheme.quickStop,
+          colorTexto: Colors.white));
     }
 
-    // La distancia solo existe si la petición llevó coordenadas.
-    final km = place.location.distanceKm;
-    if (km != null) {
-      trozos.add(_Dato(
-        icono: Icons.near_me_outlined,
-        texto: km < 1
-            ? '${(km * 1000).round()} m'
-            : '${km.toStringAsFixed(1)} km',
-      ));
-    }
-
-    if (place.visitDurationText != null) {
-      trozos.add(_Dato(
-        icono: Icons.schedule,
-        texto: place.visitDurationText!.split('.').first,
-      ));
-    } else if (place.estimatedVisitDuration != null) {
-      trozos.add(_Dato(
-        icono: Icons.schedule,
-        texto: '${place.estimatedVisitDuration} min',
-      ));
-    }
-
+    // FREE va en claro con texto oscuro, al revés que las otras dos.
     if (place.badges.freeEntry) {
-      trozos.add(const _Dato(icono: Icons.payments_outlined, texto: 'Free'));
+      etiquetas.add(const _Pildora(
+          texto: 'FREE', fondo: AztecTheme.gratis, colorTexto: AztecTheme.tinta));
     }
 
-    return Wrap(spacing: 14, runSpacing: 6, children: trozos);
+    if (place.muestraCandado) {
+      etiquetas.add(_Pildora(
+        fondo: place.esQuickStop ? AztecTheme.quickStop : AztecTheme.mustSee,
+        colorTexto: Colors.white,
+        icono: Icons.lock,
+      ));
+    }
+
+    if (etiquetas.isEmpty) return const SizedBox.shrink();
+
+    return Wrap(spacing: 6, runSpacing: 4, children: etiquetas);
   }
 }
 
-class _Dato extends StatelessWidget {
-  const _Dato({required this.icono, required this.texto});
+class _Pildora extends StatelessWidget {
+  const _Pildora({
+    required this.fondo,
+    required this.colorTexto,
+    this.texto,
+    this.icono,
+  });
 
-  final IconData icono;
-  final String texto;
+  final String? texto;
+  final IconData? icono;
+  final Color fondo;
+
+  final Color colorTexto;
 
   @override
   Widget build(BuildContext context) {
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(icono, size: 15, color: AztecTheme.tintaSuave),
-      const SizedBox(width: 4),
-      Text(texto,
-          style: const TextStyle(fontSize: 13, color: AztecTheme.tintaSuave)),
-    ]);
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: icono == null ? 6 : 5,
+          vertical: 2),
+      decoration: BoxDecoration(
+        color: fondo,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: icono != null
+          ? Icon(icono, size: 11, color: colorTexto)
+          : Text(texto!,
+              style: AztecTheme.capsulaPequena.copyWith(color: colorTexto)),
+    );
+  }
+}
+
+/// El corazón: círculo oscuro translúcido arriba a la derecha de la foto.
+class _Corazon extends StatelessWidget {
+  const _Corazon({required this.guardado, required this.onPulsar});
+
+  final bool guardado;
+  final VoidCallback onPulsar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0x661A1008),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPulsar,
+        child: SizedBox(
+          height: 36,
+          width: 36,
+          child: Icon(
+            guardado ? Icons.favorite : Icons.favorite_border,
+            size: 18,
+            color: guardado ? AztecTheme.coral : Colors.white,
+          ),
+        ),
+      ),
+    );
   }
 }
