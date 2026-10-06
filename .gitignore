@@ -41,3 +41,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Tipografías del diseño: se traen con `bash tools/traer-fuentes.sh`.
+# Son binarios de cientos de kB que no cambian nunca; no tienen por qué pesar
+# en el historial.
+assets/fonts/*.ttf
